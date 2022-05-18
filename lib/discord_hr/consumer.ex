@@ -102,8 +102,16 @@ defmodule DiscordHr.Consumer do
     Guilds.role_updated guild_id, new
   end
 
-  def handle_event({:CHANNEL_UPDATE, {_old, new}, _ws_state}) do
+  def handle_event({:CHANNEL_UPDATE, {%{name: old_name, guild_id: guild_id}, new = %{name: new_name}}, _ws_state}) do
     Guilds.channel_updated new
+    if old_name != new_name do
+      %{roles: roles} = Guilds.get guild_id
+      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == old_name end) do
+        nil -> :ok
+        {role_id, _} ->
+          Api.modify_guild_role guild_id, role_id, [name: new_name], "channel #{old_name} was renamed to #{new_name}"
+      end
+    end
   end
 
   def handle_event({:CHANNEL_CREATE, channel, _ws_state}) do
