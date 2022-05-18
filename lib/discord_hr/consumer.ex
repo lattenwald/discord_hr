@@ -43,21 +43,24 @@ defmodule DiscordHr.Consumer do
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingon"}
   }, _ws_state}) do
-    %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} = Guilds.get(guild_id)
-    case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
-      nil ->
-        respond_to_interaction interaction, "There's no ping role for this channel"
-      {role_id, _} ->
-        if Enum.member? user_roles, role_id do
-          respond_to_interaction interaction, "You already have role `@#{channel_name}`"
-        else
-          case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
-            {:ok} ->
-              respond_to_interaction interaction, "Added `@#{channel_name}` role"
-            {:error, %{response: %{message: message}}} ->
-              respond_to_interaction interaction, "Error: #{message}"
+    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Guilds.get(guild_id) do
+      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
+        nil ->
+          respond_to_interaction interaction, "There's no ping role for this channel"
+        {role_id, _} ->
+          if Enum.member? user_roles, role_id do
+            respond_to_interaction interaction, "You already have role `@#{channel_name}`"
+          else
+            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+              {:ok} ->
+                respond_to_interaction interaction, "Added `@#{channel_name}` role"
+              {:error, %{response: %{message: message}}} ->
+                respond_to_interaction interaction, "Error: #{message}"
+            end
           end
-        end
+      end
+    else
+      _ -> respond_to_interaction interaction, "Cannot find channel"
     end
   end
 
@@ -67,21 +70,24 @@ defmodule DiscordHr.Consumer do
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingoff"}
   }, _ws_state}) do
-    %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} = Guilds.get(guild_id)
-    case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
-      nil ->
-        respond_to_interaction interaction, "There's no ping role for this channel"
-      {role_id, _} ->
-        if Enum.member? user_roles, role_id do
-          case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
-            {:ok} ->
-              respond_to_interaction interaction, "Removed `@#{channel_name}` role"
-            {:error, %{response: %{message: message}}} ->
-              respond_to_interaction interaction, "Error: #{message}"
+    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Guilds.get(guild_id) do
+      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
+        nil ->
+          respond_to_interaction interaction, "There's no ping role for this channel"
+        {role_id, _} ->
+          if Enum.member? user_roles, role_id do
+            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+              {:ok} ->
+                respond_to_interaction interaction, "Removed `@#{channel_name}` role"
+              {:error, %{response: %{message: message}}} ->
+                respond_to_interaction interaction, "Error: #{message}"
+            end
+          else
+              respond_to_interaction interaction, "You don't have role `@#{channel_name}` set"
           end
-        else
-            respond_to_interaction interaction, "You don't have role `@#{channel_name}` set"
-        end
+      end
+    else
+      _ -> respond_to_interaction interaction, "Cannot find channel"
     end
   end
 

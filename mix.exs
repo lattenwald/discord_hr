@@ -7,7 +7,8 @@ defmodule DiscordHr.MixProject do
       version: "0.1.0",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -22,7 +23,21 @@ defmodule DiscordHr.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:toml_config_provider, "~> 0.2.0"},
       {:nostrum, "~> 0.5.1"}
+    ]
+  end
+
+  defp releases do
+    [
+      prod: [
+        include_executables_for: [:unix],
+        config_providers: [
+          {TomlConfigProvider, "/app/config.toml"}
+        ],
+        steps: [:assemble, :tar],
+        path: "/app/release"
+      ]
     ]
   end
 end
