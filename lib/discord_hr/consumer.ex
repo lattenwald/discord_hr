@@ -18,9 +18,22 @@ defmodule DiscordHr.Consumer do
     icons = DiscordHr.Icons.list
     options = ["random" | icons] |> Enum.map(& %{name: String.downcase(&1), description: &1, type: 1})
     commands = [
-      %{name: "icon", description: "Set icon", options: options},
-      %{name: "pingon", description: "Set role for pings in this channel"},
-      %{name: "pingoff", description: "Remove role for pings in this channel"},
+      %{name: "icon",
+        description: "Set icon",
+        description_localizations: %{
+          "ru" => "Установить иконку"
+        },
+        options: options},
+      %{name: "pingon",
+        description_localizations: %{
+          "ru" => "Включить роль для пингов в этом канале"
+        },
+        description: "Set role for pings in this channel"},
+      %{name: "pingoff",
+        description_localizations: %{
+          "ru" => "Убрать роль для пингов в этом канале"
+        },
+        description: "Remove role for pings in this channel"},
     ]
     Api.bulk_overwrite_guild_application_commands(guild_id, commands)
   end
