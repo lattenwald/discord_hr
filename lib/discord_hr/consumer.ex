@@ -1,4 +1,6 @@
 defmodule DiscordHr.Consumer do
+  require Logger
+
   use Nostrum.Consumer
 
   use Bitwise, only_operators: true
@@ -16,32 +18,32 @@ defmodule DiscordHr.Consumer do
     IO.puts "guild #{guild_id}"
     Guilds.new_guild guild
     icons = DiscordHr.Icons.list
-    options = ["random" | icons] |> Enum.map(& %{name: String.downcase(&1), description: &1, type: 1})
+    choices = ["random" | icons] |> Enum.map(& %{name: &1, value: &1})
     commands = [
       %{name: "icon",
         description: "Set icon",
-        description_localizations: %{
-          "ru" => "Установить иконку"
-        },
-        options: options},
+        description_localizations: %{"ru" => "Установить иконку"},
+        options: [%{
+          name: "icon",
+          name_localizations: %{"ru" => "иконка"},
+          description: "choose icon",
+          description_localizations: %{"ru" => "выберите иконку"},
+          type: 3, choices: choices, required: true}]
+      },
       %{name: "pingon",
-        description_localizations: %{
-          "ru" => "Включить роль для пингов в этом канале"
-        },
+        description_localizations: %{"ru" => "Включить роль для пингов в этом канале"},
         description: "Set role for pings in this channel"},
       %{name: "pingoff",
-        description_localizations: %{
-          "ru" => "Убрать роль для пингов в этом канале"
-        },
+        description_localizations: %{"ru" => "Убрать роль для пингов в этом канале"},
         description: "Remove role for pings in this channel"},
     ]
-    Api.bulk_overwrite_guild_application_commands(guild_id, commands)
+    set_guild_commands(guild_id, commands)
   end
 
   def handle_event({:INTERACTION_CREATE, interaction = %{
     type: 2,
     member: %{user: %{username: username}},
-    data: %{name: "icon", options: [%{name: key}]}
+    data: %{name: "icon", options: [%{name: "icon", value: key}]}
   }, _ws_state}) do
     {key, icon} = case key do
       "random" -> DiscordHr.Icons.random
@@ -164,6 +166,20 @@ defmodule DiscordHr.Consumer do
 
   defp respond_to_interaction(interaction, text) do
     Api.create_interaction_response(interaction, %{type: 4, data: %{content: text, flags: @flag_ephemeral}})
+  end
+
+  def set_guild_commands(guild_id, commands) do
+    case Api.bulk_overwrite_guild_application_commands(guild_id, commands) do
+      {:error, %{status_code: 429, response: %{retry_after: retry_after}}} ->
+        Logger.warning "failed setting guild application commands for guild #{guild_id}, will retry in #{retry_after} seconds"
+        :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :set_guild_commands, [guild_id, commands])
+      {:error, %{response: %{message: message}}} ->
+        retry_after = 10
+        Logger.warning "failed setting guild application commands for guild #{guild_id}: #{message} will retry in #{retry_after} seconds"
+        :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :set_guild_commands, [guild_id, commands])
+      {:ok, _} ->
+        :ok
+    end
   end
 
 end
