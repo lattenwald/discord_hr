@@ -1,5 +1,7 @@
 FROM elixir:alpine AS builder
 
+RUN apk add git
+
 ADD . /app
 WORKDIR /app
 RUN rm config/*
