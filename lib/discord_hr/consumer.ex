@@ -174,7 +174,7 @@ defmodule DiscordHr.Consumer do
     case DiscordHr.Storage.get [guild_id, :default_voice] do
       ^channel_id -> # user connected to default voice channel
         with {:ok, %{parent_id: parent_id}} = Nostrum.Cache.ChannelCache.get(channel_id),
-             {:ok, %{id: new_channel_id}} <- Api.create_guild_channel(guild_id, %{name: "at #{username}'s", type: 2, parent_id: parent_id, nsfw: false}),
+             {:ok, %{id: new_channel_id}} <- Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false}),
              {:ok} <- Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions}),
              {:ok, _} <- Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
         do
