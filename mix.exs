@@ -24,7 +24,8 @@ defmodule DiscordHr.MixProject do
   defp deps do
     [
       {:toml_config_provider, "~> 0.2.0"},
-      {:nostrum, "~> 0.5.1"}
+      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"}
+      # {:nostrum, "~> 0.5.1"}
     ]
   end
 

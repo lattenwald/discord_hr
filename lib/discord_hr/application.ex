@@ -9,7 +9,6 @@ defmodule DiscordHr.Application do
   def start(_type, _args) do
     children = [
       DiscordHr.Icons,
-      DiscordHr.Guilds,
       DiscordHr.Consumer
     ]
 

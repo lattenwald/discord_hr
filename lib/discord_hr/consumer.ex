@@ -8,15 +8,14 @@ defmodule DiscordHr.Consumer do
   @flag_ephemeral 1 <<< 6
 
   alias Nostrum.Api
-  alias DiscordHr.Guilds
+  alias Nostrum.Cache
 
   def start_link do
     Consumer.start_link(__MODULE__)
   end
 
-  def handle_event({:GUILD_AVAILABLE, guild = %{id: guild_id}, _ws_state}) do
+  def handle_event({:GUILD_AVAILABLE, %{id: guild_id}, _ws_state}) do
     IO.puts "guild #{guild_id}"
-    Guilds.new_guild guild
     icons = DiscordHr.Icons.list
     choices = ["random" | icons] |> Enum.map(& %{name: &1, value: &1})
     commands = [
@@ -58,7 +57,7 @@ defmodule DiscordHr.Consumer do
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingon"}
   }, _ws_state}) do
-    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Guilds.get(guild_id) do
+    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
       case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
         nil ->
           respond_to_interaction interaction, "There's no ping role for this channel"
@@ -66,7 +65,7 @@ defmodule DiscordHr.Consumer do
           if Enum.member? user_roles, role_id do
             respond_to_interaction interaction, "You already have role `@#{channel_name}`"
           else
-            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") |> IO.inspect do
               {:ok} ->
                 respond_to_interaction interaction, "Added `@#{channel_name}` role"
               {:error, %{response: %{message: message}}} ->
@@ -85,13 +84,13 @@ defmodule DiscordHr.Consumer do
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingoff"}
   }, _ws_state}) do
-    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Guilds.get(guild_id) do
+    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
       case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
         nil ->
           respond_to_interaction interaction, "There's no ping role for this channel"
         {role_id, _} ->
           if Enum.member? user_roles, role_id do
-            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") |> IO.inspect do
               {:ok} ->
                 respond_to_interaction interaction, "Removed `@#{channel_name}` role"
               {:error, %{response: %{message: message}}} ->
@@ -111,36 +110,15 @@ defmodule DiscordHr.Consumer do
     IO.inspect interaction
   end
 
-  def handle_event({:GUILD_ROLE_CREATE, {guild_id, role}, _ws_state}) do
-    Guilds.role_created guild_id, role
-  end
-
-  def handle_event({:GUILD_ROLE_DELETE, {guild_id, role}, _ws_state}) do
-    Guilds.role_deleted guild_id, role
-  end
-
-  def handle_event({:GUILD_ROLE_UPDATE, {guild_id, _old, new}, _ws_state}) do
-    Guilds.role_updated guild_id, new
-  end
-
-  def handle_event({:CHANNEL_UPDATE, {%{name: old_name, guild_id: guild_id}, new = %{name: new_name}}, _ws_state}) do
-    Guilds.channel_updated new
+  def handle_event({:CHANNEL_UPDATE, {%{name: old_name, guild_id: guild_id}, %{name: new_name}}, _ws_state}) do
     if old_name != new_name do
-      %{roles: roles} = Guilds.get guild_id
+      %{roles: roles} = Cache.GuildCache.get! guild_id
       case roles |> Enum.find(fn ({_, %{name: name}}) -> name == old_name end) do
         nil -> :ok
         {role_id, _} ->
           Api.modify_guild_role guild_id, role_id, [name: new_name], "channel #{old_name} was renamed to #{new_name}"
       end
     end
-  end
-
-  def handle_event({:CHANNEL_CREATE, channel, _ws_state}) do
-    Guilds.channel_updated channel
-  end
-
-  def handle_event({:CHANNEL_DELETE, channel, _ws_state}) do
-    Guilds.channel_deleted channel
   end
 
   def handle_event({event, _, _}) do
