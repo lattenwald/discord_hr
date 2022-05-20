@@ -6,6 +6,7 @@ defmodule DiscordHr.Consumer do
   use Bitwise, only_operators: true
   # https://discord.com/developers/docs/resources/channel#message-object-message-flags
   @flag_ephemeral 1 <<< 6
+  @new_voice_permissions 1 <<< 4 ||| 1 <<< 10 ||| 1 <<< 20
 
   alias Nostrum.Api
   alias Nostrum.Cache
@@ -35,6 +36,15 @@ defmodule DiscordHr.Consumer do
       %{name: "pingoff",
         description_localizations: %{"ru" => "Убрать роль для пингов в этом канале"},
         description: "Remove role for pings in this channel"},
+      %{name: "setup",
+        description: "Configuration",
+        default_member_permission: "0",
+        options: [%{
+          name: "voice",
+          description: "Voice channel to manage",
+          type: 7
+        }]
+      }
     ]
     set_guild_commands(guild_id, commands)
   end
@@ -105,6 +115,21 @@ defmodule DiscordHr.Consumer do
     end
   end
 
+  def handle_event({:INTERACTION_CREATE, interaction = %{
+    type: 2,
+    guild_id: guild_id,
+    data: %{name: "setup", options: [%{name: "voice", value: channel_id, type: 7}]}
+  }, _ws_state}) do
+    with %{channels: %{^channel_id => %{name: channel_name, type: 2}}} <- Cache.GuildCache.get!(guild_id) do
+      DiscordHr.Storage.put([guild_id, :default_voice], channel_id)
+      respond_to_interaction interaction, "Channel 🔊#{channel_name} is set as default voice channel"
+    else
+      _ ->
+        Logger.warning "Can't setup default voice channel #{channel_id} for #{guild_id}"
+        respond_to_interaction interaction, "Can't setup this channel as default voice channel"
+    end
+  end
+
 
   def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
     IO.inspect interaction
@@ -118,6 +143,49 @@ defmodule DiscordHr.Consumer do
         {role_id, _} ->
           Api.modify_guild_role guild_id, role_id, [name: new_name], "channel #{old_name} was renamed to #{new_name}"
       end
+    end
+  end
+
+  def handle_event({:CHANNEL_DELETE, %{guild_id: guild_id, id: channel_id}, _ws_state}) do
+    case DiscordHr.Storage.get [guild_id, :default_voice] do
+      ^channel_id ->
+        DiscordHr.Storage.put [guild_id, :default_voice], nil
+      _ ->
+        :ok
+    end
+  end
+
+  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: nil}, _ws_state}) do
+    with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
+         {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
+         {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
+         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
+         populated_voice_channels <- voice_states |> Enum.map(fn %{channel_id: channel_id} -> channel_id end) |> MapSet.new
+    do
+      to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels
+      Logger.info "removing #{MapSet.size to_remove} empty voice channel(s)"
+      to_remove |> Enum.each(&Api.delete_channel(&1, "removing empty managed voice channel"))
+    else
+      _ -> :ok
+    end
+  end
+
+  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
+    case DiscordHr.Storage.get [guild_id, :default_voice] do
+      ^channel_id -> # user connected to default voice channel
+        with {:ok, %{parent_id: parent_id}} = Nostrum.Cache.ChannelCache.get(channel_id),
+             {:ok, %{id: new_channel_id}} <- Api.create_guild_channel(guild_id, %{name: "at #{username}'s", type: 2, parent_id: parent_id, nsfw: false}),
+             {:ok} <- Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions}),
+             {:ok, _} <- Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
+        do
+          :ok
+        else
+          err ->
+            Logger.warning "Failed moving user to new voice channel: #{inspect err}"
+            :ok
+        end
+      _ -> # user connected to some voice channel
+        :ok
     end
   end
 

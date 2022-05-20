@@ -5,9 +5,12 @@ defmodule DiscordHr.Application do
 
   use Application
 
+  @storage "storage.bin"
+
   @impl true
   def start(_type, _args) do
     children = [
+      {DiscordHr.Storage, @storage},
       DiscordHr.Icons,
       DiscordHr.Consumer
     ]

@@ -30,3 +30,4 @@ discord_roller-*.tar
 /rsync
 /rsync.exclude
 /config/secret.exs
+/storage.bin
