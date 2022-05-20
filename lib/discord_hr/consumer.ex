@@ -155,7 +155,7 @@ defmodule DiscordHr.Consumer do
     end
   end
 
-  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: nil}, _ws_state}) do
+  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
     with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
          {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
          {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
@@ -165,27 +165,14 @@ defmodule DiscordHr.Consumer do
       to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels
       Logger.info "removing #{MapSet.size to_remove} empty voice channel(s)"
       to_remove |> Enum.each(&Api.delete_channel(&1, "removing empty managed voice channel"))
+
+      if channel_id == default_voice do
+        {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false})
+        {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions})
+        {:ok, _} = Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
+      end
     else
       _ -> :ok
-    end
-  end
-
-  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
-    case DiscordHr.Storage.get [guild_id, :default_voice] do
-      ^channel_id -> # user connected to default voice channel
-        with {:ok, %{parent_id: parent_id}} = Nostrum.Cache.ChannelCache.get(channel_id),
-             {:ok, %{id: new_channel_id}} <- Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false}),
-             {:ok} <- Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions}),
-             {:ok, _} <- Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
-        do
-          :ok
-        else
-          err ->
-            Logger.warning "Failed moving user to new voice channel: #{inspect err}"
-            :ok
-        end
-      _ -> # user connected to some voice channel
-        :ok
     end
   end
 
