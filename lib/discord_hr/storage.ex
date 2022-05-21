@@ -24,18 +24,19 @@ defmodule DiscordHr.Storage do
     File.write! storage, :erlang.term_to_binary(data)
   end
 
-  def put(keys, value) do
+  def put(keys, value) when is_list(keys) do
     Agent.update(__MODULE__, &put_in_map(&1, [:data | keys], value))
     save()
   end
 
-  def get, do: get []
-
-  def get(keys) do
-    Agent.get(__MODULE__, &get_in(&1, [:data | keys]))
+  def get(keys \\ [], default \\ nil) when is_list(keys) do
+    case Agent.get(__MODULE__, &get_in(&1, [:data | keys])) do
+      nil -> default
+      other -> other
+    end
   end
 
-  def update(keys, fun) do
+  def update(keys, fun) when is_list(keys) and is_function(fun) do
     Agent.update(__MODULE__, &update_in(&1, [:data | keys], fun))
     save()
   end
