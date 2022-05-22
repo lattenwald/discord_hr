@@ -11,17 +11,17 @@ RUN rm -f storage.bin
 ENV MIX_ENV prod
 RUN mix do local.hex --force, local.rebar --force
 RUN mix deps.get
-RUN mix do deps.compile, compile, release
+RUN mix do deps.compile, compile, release docker
 
 
 FROM elixir:alpine
 
 RUN mkdir /app
 WORKDIR /app
-COPY --from=builder /app/release/prod-*.tar.gz /app/
-RUN tar xzf prod-*.tar.gz
+COPY --from=builder /app/release/docker-*.tar.gz /app/
+RUN tar xzf docker-*.tar.gz
 
 VOLUME ["/app/config.toml", "/app/icons",  "/app/storage.bin", "/app/erl_crash.dump"]
 
-ENTRYPOINT ["/app/bin/prod"]
+ENTRYPOINT ["/app/bin/docker"]
 CMD ["start"]

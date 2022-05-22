@@ -25,13 +25,12 @@ defmodule DiscordHr.MixProject do
     [
       {:toml_config_provider, "~> 0.2.0"},
       {:nostrum, git: "https://github.com/Kraigie/nostrum.git"}
-      # {:nostrum, "~> 0.5.1"}
     ]
   end
 
   defp releases do
     [
-      prod: [
+      docker: [
         include_executables_for: [:unix],
         config_providers: [
           {TomlConfigProvider, "/app/config.toml"}
