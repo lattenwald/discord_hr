@@ -10,6 +10,6 @@
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
 
--start_epmd false
--epmd_module epmdless_static
--erl_epmd_port 8001
+##-start_epmd false
+##-epmd_module epmdless_static
+##-erl_epmd_port 8001

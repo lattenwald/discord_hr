@@ -1,32 +1,24 @@
-defmodule DiscordHr.MixProject do
+defmodule DiscordManager.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :discord_hr,
+      apps_path: "apps",
       version: "0.1.0",
-      elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
-  def application do
-    [
-      extra_applications: [:logger, :mnesia],
-      mod: {DiscordHr.Application, []}
-    ]
-  end
-
-  # Run "mix help deps" to learn about dependencies.
+  # Dependencies listed here are available only for this
+  # project and cannot be accessed from applications inside
+  # the apps folder.
+  #
+  # Run "mix help deps" for examples and options.
   defp deps do
     [
-      {:toml_config_provider, "~> 0.2.0"},
-      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"},
       {:epmdless, "~> 0.3.0"}
-      # {:memento, "~> 0.3.2"}
     ]
   end
 
@@ -34,20 +26,24 @@ defmodule DiscordHr.MixProject do
     [
       docker: [
         include_executables_for: [:unix],
+        applications: [discord_hr: :permanent],
         config_providers: [{TomlConfigProvider, "/app/config.toml"}],
         steps: [:assemble, :tar],
         path: "/app/release"
       ],
       dev: [
         include_executables_for: [:unix],
+        applications: [discord_hr: :permanent],
         cookie: "discord_hr"
       ],
       prod: [
         include_executables_for: [:unix],
+        applications: [discord_hr: :permanent],
         config_providers: [{TomlConfigProvider, "config.toml"}],
         steps: [:assemble, :tar],
         path: "releases/"
       ]
     ]
   end
+
 end
