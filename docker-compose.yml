@@ -1,0 +1,23 @@
+services:
+
+  node_a:
+    container_name: node_a
+    hostname: node_a
+    build:
+      context: .
+      network: host
+    volumes:
+      - ./config-dev.toml:/app/config.toml
+      - ./icons:/app/icons
+      - ./storage.bin:/app/storage.bin
+
+  node_b:
+    container_name: node_b
+    hostname: node_b
+    build:
+      context: .
+      network: host
+    volumes:
+      - ./config-dev.toml:/app/config.toml
+      - ./icons:/app/icons
+      - ./storage.bin:/app/storage.bin

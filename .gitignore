@@ -25,7 +25,7 @@ discord_roller-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 
-/config.toml
+*.toml
 
 /rsync
 /rsync.exclude

@@ -1,0 +1,2 @@
+#iex --name discord_hr -S mix
+iex --vm-args dev.args -S mix

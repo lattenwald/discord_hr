@@ -15,7 +15,7 @@ defmodule DiscordHr.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :mnesia],
       mod: {DiscordHr.Application, []}
     ]
   end
@@ -24,7 +24,9 @@ defmodule DiscordHr.MixProject do
   defp deps do
     [
       {:toml_config_provider, "~> 0.2.0"},
-      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"}
+      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"},
+      {:epmdless, "~> 0.3.0"}
+      # {:memento, "~> 0.3.2"}
     ]
   end
 
@@ -32,11 +34,19 @@ defmodule DiscordHr.MixProject do
     [
       docker: [
         include_executables_for: [:unix],
-        config_providers: [
-          {TomlConfigProvider, "/app/config.toml"}
-        ],
+        config_providers: [{TomlConfigProvider, "/app/config.toml"}],
         steps: [:assemble, :tar],
         path: "/app/release"
+      ],
+      dev: [
+        include_executables_for: [:unix],
+        cookie: "discord_hr"
+      ],
+      prod: [
+        include_executables_for: [:unix],
+        config_providers: [{TomlConfigProvider, "config.toml"}],
+        steps: [:assemble, :tar],
+        path: "releases/"
       ]
     ]
   end
