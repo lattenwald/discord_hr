@@ -7,15 +7,7 @@ defmodule Storage.Application do
 
   @impl true
   def start(_type, _args) do
-    nodes = [node()]
-    Memento.stop
-    Memento.Schema.create(nodes)
-    Memento.start
-
-    Memento.Table.create(Storage.Voice, disc_copies: nodes)
     children = [
-      # Starts a worker by calling: Storage.Worker.start_link(arg)
-      # {Storage.Worker, arg}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
