@@ -24,16 +24,9 @@ defmodule DiscordManager.MixProject do
 
   defp releases do
     [
-      docker: [
-        include_executables_for: [:unix],
-        applications: [discord_hr: :permanent],
-        config_providers: [{TomlConfigProvider, "/app/config.toml"}],
-        steps: [:assemble, :tar],
-        path: "/app/release"
-      ],
       dev: [
         include_executables_for: [:unix],
-        applications: [discord_hr: :permanent],
+        applications: [discord_hr: :permanent, storage: :permanent, epmdless: :permanent],
         cookie: "discord_hr"
       ],
       prod: [

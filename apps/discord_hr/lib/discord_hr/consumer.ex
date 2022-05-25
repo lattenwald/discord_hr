@@ -121,7 +121,7 @@ defmodule DiscordHr.Consumer do
     data: %{name: "setup", options: [%{name: "voice", value: channel_id, type: 7}]}
   }, _ws_state}) do
     with %{channels: %{^channel_id => %{name: channel_name, type: 2}}} <- Cache.GuildCache.get!(guild_id) do
-      DiscordHr.Storage.put([guild_id, :default_voice], channel_id)
+      {:ok, _} = Storage.write %Storage.Voice{guild_id: guild_id, channel_id: channel_id}
       respond_to_interaction interaction, "Channel 🔊#{channel_name} is set as default voice channel"
     else
       _ ->
@@ -147,19 +147,19 @@ defmodule DiscordHr.Consumer do
   end
 
   def handle_event({:CHANNEL_DELETE, %{guild_id: guild_id, id: channel_id}, _ws_state}) do
-    case DiscordHr.Storage.get [guild_id, :default_voice] do
-      ^channel_id ->
-        DiscordHr.Storage.put [guild_id, :default_voice], nil
+    case Storage.Voice.get(guild_id) do
+      {:ok, %{guild_id: ^guild_id, channel_id: ^channel_id}} ->
+        :ok = Storage.delete Storage.Voice, guild_id
       _ ->
         :ok
     end
   end
 
   def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
-    with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
+    with {:ok, %{guild_id: ^guild_id, channel_id: default_voice}} <- Storage.Voice.get(guild_id),
          {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
          {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
-         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
+         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{type: 2, parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
          populated_voice_channels <- voice_states |> Enum.map(fn %{channel_id: channel_id} -> channel_id end) |> MapSet.new
     do
       to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels

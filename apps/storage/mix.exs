@@ -1,10 +1,14 @@
-defmodule DiscordHr.MixProject do
+defmodule Storage.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :discord_hr,
+      app: :storage,
       version: "0.1.0",
+      build_path: "../../_build",
+      config_path: "../../config/config.exs",
+      deps_path: "../../deps",
+      lockfile: "../../mix.lock",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -15,17 +19,14 @@ defmodule DiscordHr.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {DiscordHr.Application, []}
+      mod: {Storage.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:storage, in_umbrella: true},
-      {:toml_config_provider, "~> 0.2.0"},
-      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"}
+      {:memento, "~> 0.3.2"}
     ]
   end
-
 end
