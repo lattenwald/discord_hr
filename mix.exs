@@ -26,8 +26,9 @@ defmodule DiscordManager.MixProject do
     [
       dev: [
         include_executables_for: [:unix],
-        applications: [discord_hr: :permanent, storage: :permanent, epmdless: :permanent],
-        cookie: "discord_hr"
+        applications: [discord_hr: :load, storage: :permanent, epmdless: :permanent],
+        cookie: "discord_hr",
+        path: "releases/"
       ],
       prod: [
         include_executables_for: [:unix],
