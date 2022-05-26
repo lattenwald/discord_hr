@@ -1,3 +1,3 @@
 #!/bin/sh
 docker pull elixir:alpine
-docker build -t discord_hr .
+docker build --network host -t discord_hr .
