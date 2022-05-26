@@ -5,6 +5,10 @@ defmodule Storage do
     def get(guild_id) do
       Memento.transaction fn -> Memento.Query.read(__MODULE__, guild_id) end
     end
+
+    def get do
+      Memento.transaction fn -> Memento.Query.all(__MODULE__) end
+    end
   end
 
   def setup do

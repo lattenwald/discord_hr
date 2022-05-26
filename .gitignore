@@ -32,3 +32,4 @@ discord_roller-*.tar
 /config/secret.exs
 /storage.bin
 /mnesia
+/releases

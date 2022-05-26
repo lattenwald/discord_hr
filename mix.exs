@@ -17,16 +17,14 @@ defmodule DiscordManager.MixProject do
   #
   # Run "mix help deps" for examples and options.
   defp deps do
-    [
-      {:epmdless, "~> 0.3.0"}
-    ]
+    []
   end
 
   defp releases do
     [
       dev: [
         include_executables_for: [:unix],
-        applications: [discord_hr: :load, storage: :permanent, epmdless: :permanent],
+        applications: [discord_hr: :permanent, storage: :permanent],
         cookie: "discord_hr",
         path: "releases/"
       ],
