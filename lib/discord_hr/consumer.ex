@@ -159,7 +159,7 @@ defmodule DiscordHr.Consumer do
     with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
          {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
          {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
-         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
+         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{type: 2, parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
          populated_voice_channels <- voice_states |> Enum.map(fn %{channel_id: channel_id} -> channel_id end) |> MapSet.new
     do
       to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels
