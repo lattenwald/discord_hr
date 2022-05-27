@@ -8,6 +8,7 @@ defmodule DiscordHr.Consumer do
   @flag_ephemeral 1 <<< 6
   @new_voice_permissions 1 <<< 4 ||| 1 <<< 10 ||| 1 <<< 20
 
+  # application commands handlers
   @handlers %{
     "icon" => :set_icon,
     "voice" => %{"channel" => :set_voice_channel},
@@ -21,6 +22,10 @@ defmodule DiscordHr.Consumer do
   def start_link do
     Consumer.start_link(__MODULE__)
   end
+
+  ###############################################################
+  # handle events
+  ###############################################################
 
   def handle_event({:GUILD_AVAILABLE, %{id: guild_id}, _ws_state}) do
     IO.puts "guild #{guild_id}"
@@ -66,6 +71,65 @@ defmodule DiscordHr.Consumer do
     interaction_react(interaction, path)
   end
 
+  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
+    IO.inspect interaction
+  end
+
+  def handle_event({:CHANNEL_UPDATE, {%{name: old_name, guild_id: guild_id}, %{name: new_name}}, _ws_state}) do
+    if old_name != new_name do
+      %{roles: roles} = Cache.GuildCache.get! guild_id
+      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == old_name end) do
+        nil -> :ok
+        {role_id, _} ->
+          Api.modify_guild_role guild_id, role_id, [name: new_name], "channel #{old_name} was renamed to #{new_name}"
+      end
+    end
+  end
+
+  def handle_event({:CHANNEL_DELETE, %{guild_id: guild_id, id: channel_id}, _ws_state}) do
+    case DiscordHr.Storage.get [guild_id, :default_voice] do
+      ^channel_id ->
+        DiscordHr.Storage.put [guild_id, :default_voice], nil
+      _ ->
+        :ok
+    end
+  end
+
+  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
+    with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
+         {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
+         {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
+         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{type: 2, parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
+         populated_voice_channels <- voice_states |> Enum.map(fn %{channel_id: channel_id} -> channel_id end) |> MapSet.new
+    do
+      to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels
+      Logger.info "removing #{MapSet.size to_remove} empty voice channel(s)"
+      to_remove |> Enum.each(&Api.delete_channel(&1, "removing empty managed voice channel"))
+
+      if channel_id == default_voice do
+        {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false})
+        {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions})
+        {:ok, _} = Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  def handle_event({event, _, _}) do
+    IO.inspect event
+  end
+
+  # Default event handler, if you don't include this, your consumer WILL crash if
+  # you don't have a method definition for each event type.
+  def handle_event(_event) do
+    :noop
+  end
+
+  ###############################################################
+  # application commands
+  ###############################################################
+
   def interaction_react(interaction, path), do: interaction_react(interaction, path, @handlers)
   def interaction_react(interaction, path = [name | rest], handlers) do
     case Map.get(handlers, name, nil) do
@@ -86,7 +150,7 @@ defmodule DiscordHr.Consumer do
   end
   def extract_interaction_path(%{data: data}), do: extract_interaction_path(data)
 
-  def set_icon(interaction = %{member: %{user: %{username: username}}}, [%{"icon" => key}]) do
+  def handle_application_command(:set_icon, interaction = %{member: %{user: %{username: username}}}, [%{"icon" => key}]) do
     {key, icon} = case key do
       "random" -> DiscordHr.Icons.random
       _ -> {key, DiscordHr.Icons.icon key}
@@ -158,60 +222,9 @@ defmodule DiscordHr.Consumer do
   end
 
 
-  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    IO.inspect interaction
-  end
-
-  def handle_event({:CHANNEL_UPDATE, {%{name: old_name, guild_id: guild_id}, %{name: new_name}}, _ws_state}) do
-    if old_name != new_name do
-      %{roles: roles} = Cache.GuildCache.get! guild_id
-      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == old_name end) do
-        nil -> :ok
-        {role_id, _} ->
-          Api.modify_guild_role guild_id, role_id, [name: new_name], "channel #{old_name} was renamed to #{new_name}"
-      end
-    end
-  end
-
-  def handle_event({:CHANNEL_DELETE, %{guild_id: guild_id, id: channel_id}, _ws_state}) do
-    case DiscordHr.Storage.get [guild_id, :default_voice] do
-      ^channel_id ->
-        DiscordHr.Storage.put [guild_id, :default_voice], nil
-      _ ->
-        :ok
-    end
-  end
-
-  def handle_event({:VOICE_STATE_UPDATE, %{guild_id: guild_id, channel_id: channel_id, member: %{user: %{id: userid, username: username}}}, _ws_state}) do
-    with default_voice when default_voice != nil <- DiscordHr.Storage.get([guild_id, :default_voice]),
-         {:ok, %{parent_id: parent_id}} <- Nostrum.Cache.ChannelCache.get(default_voice),
-         {:ok, %{channels: channels, voice_states: voice_states}} <- Nostrum.Cache.GuildCache.get(guild_id),
-         voice_channels_of_interest <- channels |> Enum.filter(fn {id, %{type: 2, parent_id: ^parent_id}} -> id != default_voice; (_) -> false end) |> Enum.map(fn {id, _} -> id end) |> MapSet.new,
-         populated_voice_channels <- voice_states |> Enum.map(fn %{channel_id: channel_id} -> channel_id end) |> MapSet.new
-    do
-      to_remove = MapSet.difference voice_channels_of_interest, populated_voice_channels
-      Logger.info "removing #{MapSet.size to_remove} empty voice channel(s)"
-      to_remove |> Enum.each(&Api.delete_channel(&1, "removing empty managed voice channel"))
-
-      if channel_id == default_voice do
-        {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false})
-        {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions})
-        {:ok, _} = Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
-      end
-    else
-      _ -> :ok
-    end
-  end
-
-  def handle_event({event, _, _}) do
-    IO.inspect event
-  end
-
-  # Default event handler, if you don't include this, your consumer WILL crash if
-  # you don't have a method definition for each event type.
-  def handle_event(_event) do
-    :noop
-  end
+  ###############################################################
+  # helpers
+  ###############################################################
 
   defp set_icon(interaction = %{guild_id: guild_id}, key, icon, reason \\ nil) do
     case Nostrum.Api.modify_guild(guild_id, [icon: icon], reason) do
