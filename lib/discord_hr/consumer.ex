@@ -8,6 +8,13 @@ defmodule DiscordHr.Consumer do
   @flag_ephemeral 1 <<< 6
   @new_voice_permissions 1 <<< 4 ||| 1 <<< 10 ||| 1 <<< 20
 
+  @handlers %{
+    "icon" => :set_icon,
+    "voice" => %{"channel" => :set_voice_channel},
+    "pingon" => :set_pingon,
+    "pingoff" => :set_pingoff
+  }
+
   alias Nostrum.Api
   alias Nostrum.Cache
 
@@ -36,24 +43,50 @@ defmodule DiscordHr.Consumer do
       %{name: "pingoff",
         description_localizations: %{"ru" => "Убрать роль для пингов в этом канале"},
         description: "Remove role for pings in this channel"},
-      %{name: "setup",
-        description: "Configuration",
+      %{name: "voice",
+        description: "Voice configuration",
         default_member_permission: "0",
         options: [%{
-          name: "voice",
-          description: "Voice channel to manage",
-          type: 7
+          name: "channel",
+          description: "choose channel to manage",
+          type: 1,
+          options: [%{
+            name: "id",
+            required: true,
+            description: "Voice channel to manage",
+            type: 7 }]
         }]
       }
     ]
     set_guild_commands(guild_id, commands)
   end
 
-  def handle_event({:INTERACTION_CREATE, interaction = %{
-    type: 2,
-    member: %{user: %{username: username}},
-    data: %{name: "icon", options: [%{name: "icon", value: key}]}
-  }, _ws_state}) do
+  def handle_event({:INTERACTION_CREATE, interaction = %{type: 2}, _ws_state}) do
+    path = extract_interaction_path(interaction)
+    interaction_react(interaction, path)
+  end
+
+  def interaction_react(interaction, path), do: interaction_react(interaction, path, @handlers)
+  def interaction_react(interaction, path = [name | rest], handlers) do
+    case Map.get(handlers, name, nil) do
+      nil ->
+        Logger.warning "no handler for interaction ~p ~p~n#{inspect interaction}", [path, @handlers, interaction]
+      reaction when is_atom(reaction) ->
+        handle_application_command(reaction, interaction, rest)
+      more_handlers ->
+        interaction_react(interaction, rest, more_handlers)
+    end
+  end
+
+  def extract_interaction_path(nil), do: []
+  def extract_interaction_path([option]), do: extract_interaction_path(option)
+  def extract_interaction_path(%{name: name, options: nil, value: value}), do: [%{name => value}]
+  def extract_interaction_path(%{name: name, options: opts}) do
+    [name | extract_interaction_path(opts)]
+  end
+  def extract_interaction_path(%{data: data}), do: extract_interaction_path(data)
+
+  def set_icon(interaction = %{member: %{user: %{username: username}}}, [%{"icon" => key}]) do
     {key, icon} = case key do
       "random" -> DiscordHr.Icons.random
       _ -> {key, DiscordHr.Icons.icon key}
@@ -61,12 +94,11 @@ defmodule DiscordHr.Consumer do
     set_icon(interaction, key, icon, "#{username} used /icon #{key}")
   end
 
-  def handle_event({:INTERACTION_CREATE, interaction = %{
-    type: 2,
+  def handle_application_command(:set_pingon, interaction = %{
     guild_id: guild_id, channel_id: channel_id,
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingon"}
-  }, _ws_state}) do
+  }, _) do
     with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
       case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
         nil ->
@@ -75,7 +107,7 @@ defmodule DiscordHr.Consumer do
           if Enum.member? user_roles, role_id do
             respond_to_interaction interaction, "You already have role `@#{channel_name}`"
           else
-            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") |> IO.inspect do
+            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
               {:ok} ->
                 respond_to_interaction interaction, "Added `@#{channel_name}` role"
               {:error, %{response: %{message: message}}} ->
@@ -88,19 +120,18 @@ defmodule DiscordHr.Consumer do
     end
   end
 
-  def handle_event({:INTERACTION_CREATE, interaction = %{
-    type: 2,
+  def handle_application_command(:set_pingoff, interaction = %{
     guild_id: guild_id, channel_id: channel_id,
     member: %{user: %{id: user_id, username: username}, roles: user_roles},
     data: %{name: "pingoff"}
-  }, _ws_state}) do
+  }, _) do
     with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
       case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
         nil ->
           respond_to_interaction interaction, "There's no ping role for this channel"
         {role_id, _} ->
           if Enum.member? user_roles, role_id do
-            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") |> IO.inspect do
+            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
               {:ok} ->
                 respond_to_interaction interaction, "Removed `@#{channel_name}` role"
               {:error, %{response: %{message: message}}} ->
@@ -115,11 +146,7 @@ defmodule DiscordHr.Consumer do
     end
   end
 
-  def handle_event({:INTERACTION_CREATE, interaction = %{
-    type: 2,
-    guild_id: guild_id,
-    data: %{name: "setup", options: [%{name: "voice", value: channel_id, type: 7}]}
-  }, _ws_state}) do
+  def handle_application_command(:set_voice_channel, interaction = %{guild_id: guild_id}, [%{"id" => channel_id}]) do
     with %{channels: %{^channel_id => %{name: channel_name, type: 2}}} <- Cache.GuildCache.get!(guild_id) do
       DiscordHr.Storage.put([guild_id, :default_voice], channel_id)
       respond_to_interaction interaction, "Channel 🔊#{channel_name} is set as default voice channel"
