@@ -17,7 +17,7 @@ defmodule DiscordHr.Consumer do
         "list" => :get_voice_names,
         "add" => :add_voice_name,
         "delete" => :del_voice_name,
-        "clear" => :clear_voice_names,
+        # "clear" => :clear_voice_names,
         "rename" => :toggle_voice_renaming
       }
     },
@@ -99,10 +99,10 @@ defmodule DiscordHr.Consumer do
                 min_value: 1,
                 max_value: 999
               }]
-            }, %{
-              name: "clear",
-              description: "clear channel names list",
-              type: 1
+            # }, %{
+            #   name: "clear",
+            #   description: "clear channel names list",
+            #   type: 1
             }, %{
               name: "rename",
               description: "toggle channels renaming",
