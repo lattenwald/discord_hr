@@ -11,7 +11,16 @@ defmodule DiscordHr.Consumer do
   # application commands handlers
   @handlers %{
     "icon" => :set_icon,
-    "voice" => %{"channel" => :set_voice_channel},
+    "voice" => %{
+      "channel" => :set_voice_channel,
+      "names" => %{
+        "list" => :get_voice_names,
+        "add" => :add_voice_name,
+        "delete" => :del_voice_name,
+        "clear" => :clear_voice_names,
+        "rename" => :toggle_voice_renaming
+      }
+    },
     "pingon" => :set_pingon,
     "pingoff" => :set_pingoff
   }
@@ -60,6 +69,52 @@ defmodule DiscordHr.Consumer do
             required: true,
             description: "Voice channel to manage",
             type: 7 }]
+        }, %{
+          name: "names",
+          description: "voice channel names",
+          type: 2,
+          options: [
+            %{ name: "add",
+              description: "add voice channel name",
+              type: 1,
+              options: [%{
+                name: "name",
+                description: "name",
+                type: 3,
+                required: true
+              }]
+            }, %{
+              name: "list",
+              description: "list channel names",
+              type: 1
+            }, %{
+              name: "delete",
+              description: "delete channel name",
+              type: 1,
+              options: [%{
+                name: "id",
+                description: "id",
+                required: true,
+                type: 4,
+                min_value: 1,
+                max_value: 999
+              }]
+            }, %{
+              name: "clear",
+              description: "clear channel names list",
+              type: 1
+            }, %{
+              name: "rename",
+              description: "toggle channels renaming",
+              type: 1,
+              options: [%{
+                name: "on",
+                description: "on",
+                required: true,
+                type: 5
+              }]
+            }
+          ]
         }]
       }
     ]
@@ -107,7 +162,18 @@ defmodule DiscordHr.Consumer do
       to_remove |> Enum.each(&Api.delete_channel(&1, "removing empty managed voice channel"))
 
       if channel_id == default_voice do
-        {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: "#{username}'s Channel", type: 2, parent_id: parent_id, nsfw: false})
+        channel_name = if DiscordHr.Storage.get([guild_id, :voice_renaming_on], false) do
+          names = DiscordHr.Storage.get([guild_id, :voice_names], []) |> Enum.into(MapSet.new)
+          existing_channel_names = Nostrum.Cache.GuildCache.get!(guild_id).channels |> Enum.map(fn {_, %{name: n}} -> n end) |> Enum.into(MapSet.new)
+          choosing_from = MapSet.difference names, existing_channel_names
+          case MapSet.size(choosing_from) do
+            0 -> "#{username}'s Channel"
+            _ -> choosing_from |> Enum.random
+          end
+        else
+            "#{username}'s Channel"
+        end
+        {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: channel_name, type: 2, parent_id: parent_id, nsfw: false})
         {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions})
         {:ok, _} = Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
       end
@@ -134,7 +200,8 @@ defmodule DiscordHr.Consumer do
   def interaction_react(interaction, path = [name | rest], handlers) do
     case Map.get(handlers, name, nil) do
       nil ->
-        Logger.warning "no handler for interaction ~p ~p~n#{inspect interaction}", [path, @handlers, interaction]
+        Logger.warning "no handler for interaction #{inspect path} #{inspect handlers}~n#{inspect interaction}"
+        respond_to_interaction interaction, "Can't handle that, report to bot author"
       reaction when is_atom(reaction) ->
         handle_application_command(reaction, interaction, rest)
       more_handlers ->
@@ -143,6 +210,7 @@ defmodule DiscordHr.Consumer do
   end
 
   def extract_interaction_path(nil), do: []
+  def extract_interaction_path([]), do: []
   def extract_interaction_path([option]), do: extract_interaction_path(option)
   def extract_interaction_path(%{name: name, options: nil, value: value}), do: [%{name => value}]
   def extract_interaction_path(%{name: name, options: opts}) do
@@ -221,6 +289,49 @@ defmodule DiscordHr.Consumer do
     end
   end
 
+  def handle_application_command(:get_voice_names, interaction = %{guild_id: guild_id}, _) do
+    on = DiscordHr.Storage.get([guild_id, :voice_renaming_on], false)
+    on_text = "Automatic voice renaming is **#{if on, do: "on", else: "off"}**"
+    case DiscordHr.Storage.get([guild_id, :voice_names], []) do
+      [] -> respond_to_interaction interaction, "#{on_text}\nNo names configured"
+      names ->
+        text = names |> Enum.zip(1 .. length(names)) |> Enum.map(fn {name, num} -> "#{num}. `#{name}`" end) |> Enum.join("\n")
+        respond_to_interaction(interaction, "#{on_text}\nConfigured voice names:\n#{text}")
+    end
+  end
+
+  def handle_application_command(:add_voice_name, interaction = %{guild_id: guild_id}, [%{"name" => name}]) do
+    names = DiscordHr.Storage.get([guild_id, :voice_names], [])
+    if Enum.member?(names, name) do
+      respond_to_interaction interaction, "Voice name already present"
+    else
+      names = [name | names]
+      DiscordHr.Storage.put([guild_id, :voice_names], names)
+      respond_to_interaction interaction, "Voice name saved"
+    end
+  end
+
+  def handle_application_command(:del_voice_name, interaction = %{guild_id: guild_id}, [%{"id" => id}]) do
+    names = DiscordHr.Storage.get([guild_id, :voice_names], [])
+    if length(names) < id do
+      respond_to_interaction interaction, "Don't have channel name #{id}"
+    else
+      name = names |> Enum.at(id-1)
+      names = names |> List.delete_at(id - 1)
+      DiscordHr.Storage.put([guild_id, :voice_names], names)
+      respond_to_interaction interaction, "Voice name `#{name}` deleted"
+    end
+  end
+
+  def handle_application_command(:clear_voice_names, interaction = %{guild_id: guild_id}, _) do
+    DiscordHr.Storage.put([guild_id, :voice_names], [])
+    respond_to_interaction interaction, "Voice names cleared"
+  end
+
+  def handle_application_command(:toggle_voice_renaming, interaction = %{guild_id: guild_id}, [%{"on" => on}]) do
+    DiscordHr.Storage.put([guild_id, :voice_renaming_on], on)
+    respond_to_interaction interaction, "Automatic voice renaming is turned **#{if on, do: "on", else: "off"}**"
+  end
 
   ###############################################################
   # helpers
