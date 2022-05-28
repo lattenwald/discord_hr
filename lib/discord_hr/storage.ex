@@ -41,6 +41,27 @@ defmodule DiscordHr.Storage do
     save()
   end
 
+  def delete(keys) when is_list(keys) do
+    Agent.update(__MODULE__, &delete_in_map(&1, [:data | keys]))
+    save()
+  end
+
+  def delete_in_map(map, [key]) do
+    case Map.get(map, key, nil) do
+      nil -> Map.delete(map, key)
+      m = %{} when map_size(m) == 0 ->
+        Map.delete(map, key)
+      %{} ->
+        map
+      _ ->
+        Map.delete(map, key)
+    end
+  end
+  def delete_in_map(map, [key | rest]) do
+    internal = Map.get(map, key, %{})
+    Map.put(map, key, delete_in_map(internal, rest))
+  end
+
   def put_in_map(map, [key], val), do: Map.put(map, key, val)
   def put_in_map(map, [key | rest], val) do
     internal = Map.get(map, key, %{})
