@@ -205,7 +205,7 @@ defmodule DiscordHr.Consumer do
             "#{username}'s Channel"
         end
         {:ok, %{id: new_channel_id}} = Api.create_guild_channel(guild_id, %{name: channel_name, type: 2, parent_id: parent_id, nsfw: false})
-        {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: :member, allow: @new_voice_permissions})
+        {:ok} = Api.edit_channel_permissions(new_channel_id, userid, %{type: "member", allow: @new_voice_permissions})
         {:ok, _} = Api.modify_guild_member(guild_id, userid, channel_id: new_channel_id)
       end
     else
