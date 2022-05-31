@@ -47,7 +47,10 @@ defmodule DiscordHr.Consumer do
 
   defp guild_application_commands(guild_id) do
     @command_modules |> List.foldl(@commands, fn module, acc ->
-      [module.guild_application_command(guild_id) | acc]
+      case module.guild_application_command(guild_id) do
+        nil -> acc
+        cmd = %{} -> [cmd | acc]
+      end
     end)
   end
 

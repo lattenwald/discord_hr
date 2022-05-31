@@ -1,5 +1,6 @@
 defmodule DiscordHr.Voice do
   require Logger
+  use DiscordHr.CommandModule
 
   use Bitwise, only_operators: true
   @new_voice_permissions 1 <<< 4 ||| 1 <<< 10 ||| 1 <<< 20

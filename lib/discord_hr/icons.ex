@@ -1,6 +1,7 @@
 defmodule DiscordHr.Icons do
   require Logger
   use Agent
+  use DiscordHr.CommandModule
 
   def start_link(_) do
     {:ok, files} = File.ls "icons"
@@ -41,7 +42,6 @@ defmodule DiscordHr.Icons do
   end
 
   def command_handlers, do: {"icon", :set_icon}
-  def component_handlers, do: nil
 
   def handle_application_command(:set_icon, interaction = %{member: %{user: %{username: username}}}, [%{"icon" => key}]) do
     {key, icon} = case key do
@@ -62,8 +62,6 @@ defmodule DiscordHr.Icons do
     end
   end
 
-  def handle_event(_), do: :noop
-
   def interaction_react(interaction, path) do
     {_, handlers} = command_handlers()
     interaction_react(interaction, path, handlers)
@@ -82,6 +80,5 @@ defmodule DiscordHr.Icons do
         interaction_react(interaction, rest, more_handlers)
     end
   end
-
 
 end
