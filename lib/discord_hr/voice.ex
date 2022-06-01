@@ -112,7 +112,7 @@ defmodule DiscordHr.Voice do
     end
   end
 
-  def handle_component(:delete_select, interaction = %{guild_id: guild_id, data: %{values: [selected]}}, []) do
+  def handle_component(:delete_select, interaction = %{guild_id: guild_id, data: %{values: selected}}, []) do
     components = delete_channel_components(guild_id, selected)
     DiscordHr.respond_to_component interaction, "", components
   end
@@ -130,15 +130,11 @@ defmodule DiscordHr.Voice do
       }
     }, [])
   do
-    with %{value: name} <- options |> Enum.find(& Map.get(&1, :default, false)) do
+    with remove <- options |> Enum.filter(& Map.get(&1, :default, false)) |> Enum.map(& &1.value) do
       names = Storage.get([guild_id, :voice_names], [])
-      new_names = names |> Enum.filter(& &1 != name)
-      if length(names) == length(new_names) do
-        DiscordHr.respond_to_component interaction, "Don't have channel name `#{name}`"
-      else
-        Storage.put([guild_id, :voice_names], new_names)
-        DiscordHr.respond_to_component interaction, "Voice name `#{name}` deleted"
-      end
+      new_names = names |> Enum.filter(& not Enum.member?(remove, &1))
+      Storage.put([guild_id, :voice_names], new_names)
+      DiscordHr.respond_to_component interaction, "Removed **#{length(names) - length(new_names)}** voice names"
     else
       _ ->
         DiscordHr.respond_to_component interaction, "nothing to delete"
@@ -238,10 +234,14 @@ defmodule DiscordHr.Voice do
 
   def handle_event(_), do: :noop
 
-  defp delete_channel_components(guild_id, selected \\ nil) do
+  defp delete_channel_components(guild_id, selected \\ []) do
     names = Storage.get([guild_id, :voice_names], nil)
-    options = names |> Enum.map(&(%Component.Option{label: "#{&1}", value: "#{&1}", default: &1 == selected}))
-    menu = Component.SelectMenu.select_menu("voice:delete:select", options: options)
+    options = names |> Enum.map(&(%Component.Option{label: "#{&1}", value: "#{&1}", default: Enum.member?(selected, &1)}))
+    menu = Component.SelectMenu.select_menu("voice:delete:select",
+      placeholder: "Select names to delete",
+      min_values: 0,
+      max_values: min(length(options), 20),
+      options: options)
     row1 = Component.ActionRow.action_row()
     row1 = Component.ActionRow.put row1, menu
     [
