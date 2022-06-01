@@ -19,6 +19,7 @@ defmodule DiscordHr.Voice do
       "rename" => :toggle_voice_renaming
     }
   } }
+  @impl true
   def command_handlers, do: @command_handlers
 
   @component_handlers {"voice", %{
@@ -27,6 +28,7 @@ defmodule DiscordHr.Voice do
       "button" => :delete_button
     }
   }}
+  @impl true
   def component_handlers, do: @component_handlers
 
   @command %{name: "voice",
@@ -78,8 +80,10 @@ defmodule DiscordHr.Voice do
       }]
     }
 
+  @impl true
   def guild_application_command(_), do: @command
 
+  @impl true
   def interaction_react(interaction, path) do
     {_, handlers} = command_handlers()
     interaction_react(interaction, path, handlers)
@@ -96,6 +100,7 @@ defmodule DiscordHr.Voice do
     end
   end
 
+  @impl true
   def component_react(interaction, path) do
     {_, handlers} = component_handlers()
     component_react(interaction, path, handlers)
@@ -190,7 +195,7 @@ defmodule DiscordHr.Voice do
     DiscordHr.respond_to_interaction interaction, "Automatic voice renaming is turned **#{if on, do: "on", else: "off"}**"
   end
 
-
+  @impl true
   def handle_event({:CHANNEL_DELETE, %{guild_id: guild_id, id: channel_id}, _ws_state}) do
     case Storage.get [guild_id, :default_voice] do
       ^channel_id ->

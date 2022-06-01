@@ -1,6 +1,14 @@
 defmodule DiscordHr.CommandModule do
+  @callback command_handlers() :: nil | {String.t, Map.t}
+  @callback component_handlers() :: nil | {String.t, Map.t}
+  @callback guild_application_command(Nostrum.Struct.Guild.id) :: nil | Nostrum.Struct.ApplicationCommand.application_command_map
+  @callback handle_event(Nostrum.Consumer.event) :: any
+  @callback interaction_react(Nostrum.Struct.Interaction.t, List.t) :: any
+  @callback component_react(Nostrum.Struct.Interaction.t, List.t) :: any
+
   defmacro __using__(_params) do
     quote do
+      @behaviour DiscordHr.CommandModule
       def command_handlers, do: nil
       def component_handlers, do: nil
 

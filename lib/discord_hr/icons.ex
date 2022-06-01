@@ -25,7 +25,7 @@ defmodule DiscordHr.Icons do
     Agent.get(__MODULE__, &Enum.random(&1))
   end
 
-
+  @impl true
   def guild_application_command(_) do
     icons = DiscordHr.Icons.list
     choices = ["random" | icons] |> Enum.map(& %{name: &1, value: &1})
@@ -41,6 +41,7 @@ defmodule DiscordHr.Icons do
       }]}
   end
 
+  @impl true
   def command_handlers, do: {"icon", :set_icon}
 
   def handle_application_command(:set_icon, interaction = %{member: %{user: %{username: username}}}, [%{"icon" => key}]) do
@@ -62,6 +63,7 @@ defmodule DiscordHr.Icons do
     end
   end
 
+  @impl true
   def interaction_react(interaction, path) do
     {_, handlers} = command_handlers()
     interaction_react(interaction, path, handlers)
