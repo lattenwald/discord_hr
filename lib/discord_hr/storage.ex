@@ -47,15 +47,7 @@ defmodule DiscordHr.Storage do
   end
 
   def delete_in_map(map, [key]) do
-    case Map.get(map, key, nil) do
-      nil -> Map.delete(map, key)
-      m = %{} when map_size(m) == 0 ->
-        Map.delete(map, key)
-      %{} ->
-        map
-      _ ->
-        Map.delete(map, key)
-    end
+    Map.delete map, key
   end
   def delete_in_map(map, [key | rest]) do
     internal = Map.get(map, key, %{})

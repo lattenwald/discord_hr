@@ -31,7 +31,8 @@ defmodule DiscordHr.Voice do
   @impl true
   def component_handlers, do: @component_handlers
 
-  @command %{name: "voice",
+  @command %{
+    name: "voice",
     description: "Voice configuration",
     default_member_permission: "0",
     options: [%{
@@ -252,7 +253,7 @@ defmodule DiscordHr.Voice do
     [
       row1,
       Component.ActionRow.action_row([
-        Component.Button.interaction_button("DELETE", "voice:delete:button", style: 4, disabled: selected == nil),
+        Component.Button.interaction_button("DELETE", "voice:delete:button", style: 4, disabled: selected == []),
         Component.Button.interaction_button("Cancel", "cancel", style: 1),
       ])
     ]
