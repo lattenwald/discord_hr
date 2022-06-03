@@ -4,6 +4,7 @@ defmodule DiscordHr.Roles do
 
   alias DiscordHr.Storage
   alias Nostrum.Struct.Component
+  alias Nostrum.Cache
 
   @key :roles_groups
   @empty_group %{enabled: false, max: 1, roles: []}
@@ -69,7 +70,8 @@ defmodule DiscordHr.Roles do
         "delete" => :delete_group,
         "enable" => :enable_groups,
         "disable" => :disable_groups,
-        "max_roles" => :set_max_roles
+        "max_roles" => :set_max_roles,
+        "choose" => :choose_group_roles,
       }
     }}
   end
@@ -86,10 +88,14 @@ defmodule DiscordHr.Roles do
       },"choose" => %{
         "select" => :group_choose_select,
         "button" => %{
-          "set_max_roles" => :set_max_roles_selected
+          "set_max_roles" => :set_max_roles_selected,
+          "choose_group_roles" => :set_group_roles_button,
         }
-      }, "max_count" =>
-        %{"select" => :max_count_select}
+      }, "max_count" => %{
+        "select" => :max_count_select
+      }, "choose_roles" => %{
+        "select" => :select_group_roles
+      }
       }}
   end
 
@@ -187,6 +193,16 @@ defmodule DiscordHr.Roles do
     end
   end
 
+  def handle_application_command(:choose_group_roles, interaction = %{guild_id: guild_id}, []) do
+    case map_size Storage.get([guild_id, @key], %{}) do
+      0 -> DiscordHr.respond_to_interaction interaction, "No roles group here"
+      _ ->
+        components = choose_group_components(guild_id, :choose_group_roles)
+        DiscordHr.respond_to_interaction interaction, "Choose group", components
+    end
+  end
+
+
   def handle_component(:group_delete_select, interaction = %{guild_id: guild_id, data: %{values: selected}}, []) do
     components = delete_group_components(guild_id, selected)
     DiscordHr.respond_to_component interaction, "", components
@@ -266,14 +282,33 @@ defmodule DiscordHr.Roles do
     }, [])
   do
     %{options: options} = find_component(components, "roles:choose:select:set_max_roles")
-    name = Enum.find(options, &Map.get(&1, :default, :false)).value |> IO.inspect
+    name = Enum.find(options, &Map.get(&1, :default, :false)).value
 
     %{options: options} = find_component(components, "roles:max_count:select")
-    value = Enum.find(options, &Map.get(&1, :default, :false)).value |> IO.inspect
+    value = Enum.find(options, &Map.get(&1, :default, :false)).value
     {value, ""} = Integer.parse(value)
 
     Storage.put([guild_id, @key, name, :max], value)
     DiscordHr.respond_to_component interaction, "Set max of `#{value}` roles for `#{name}` group", []
+  end
+
+  def handle_component(:set_group_roles_button,
+    interaction = %{
+      guild_id: guild_id,
+      message: %{components: components}
+    }, [])
+  do
+  %{options: options} = find_component(components, "roles:choose:select:choose_group_roles")
+    name = Enum.find(options, &Map.get(&1, :default, :false)).value
+
+    %{options: options} = find_component(components, "roles:choose_roles:select")
+    values = options |> Enum.filter(&Map.get(&1, :default, false)) |> Enum.map(fn v ->
+      {id, ""} = Integer.parse(v.value)
+      id
+    end)
+
+    Storage.put([guild_id, @key, name, :roles], values)
+    DiscordHr.respond_to_component interaction, "Set #{length values}` roles for `#{name}` group", []
   end
 
   def handle_component(:max_count_select, interaction =
@@ -289,6 +324,24 @@ defmodule DiscordHr.Roles do
     components = choose_group_components(guild_id, :set_max_roles, name, count)
     DiscordHr.respond_to_component(interaction, "", components)
   end
+
+  def handle_component(:select_group_roles, interaction =
+    %{guild_id: guild_id,
+      message: %{components: components},
+      data: %{values: values}
+    }, []
+  ) do
+    values = Enum.map(values, fn v ->
+      {id, ""} = Integer.parse v
+      id
+    end)
+    %{options: options} = find_component(components, "roles:choose:select:choose_group_roles")
+    name = Enum.find(options, &Map.get(&1, :default, :false)).value
+
+    components = choose_group_components(guild_id, :choose_group_roles, name, values)
+    DiscordHr.respond_to_component(interaction, "", components)
+  end
+
 
   defp delete_group_components(guild_id, selected \\ []) do
     groups = Storage.get([guild_id, @key], %{})
@@ -346,7 +399,6 @@ defmodule DiscordHr.Roles do
       options: options)
     row1 = Component.ActionRow.action_row()
     row1 = Component.ActionRow.put row1, menu
-    IO.puts "#{inspect type}, #{inspect guild_id}, #{inspect selected}, #{inspect value}"
     List.flatten [
       row1,
       second_component_row(type, guild_id, selected, value),
@@ -360,6 +412,8 @@ defmodule DiscordHr.Roles do
   defp button(_, nil, _), do: Component.Button.interaction_button("Choose role", "none", style: 4, disabled: true)
   defp button(:set_max_roles, _, nil), do: Component.Button.interaction_button("Choose max", "none", style: 4, disabled: true)
   defp button(:set_max_roles, name, value), do: Component.Button.interaction_button("Set #{value} for #{name}", "roles:choose:button:set_max_roles", style: 4)
+  defp button(type = :choose_group_roles, name, nil), do: Component.Button.interaction_button("Set roles for #{name}", "roles:choose:button:#{type}", style: 4)
+  defp button(type = :choose_group_roles, name, values), do: Component.Button.interaction_button("Set #{length(values)} roles for #{name}", "roles:choose:button:#{type}", style: 4)
   defp button(type, _, _), do: Component.Button.interaction_button("Choose role", "roles:choose:button:#{type}", style: 4)
 
   defp second_component_row(:set_max_roles, _, nil, _), do: []
@@ -371,7 +425,25 @@ defmodule DiscordHr.Roles do
     )
     Component.ActionRow.action_row components: [menu]
   end
-  defp second_component_row(_,_,_,_), do: []
+  defp second_component_row(:choose_group_roles, _, nil, _), do: []
+  defp second_component_row(:choose_group_roles, guild_id, name, values) do
+    values = case values do
+      nil -> Storage.get([guild_id, @key, name, :roles])
+      _ -> values
+    end
+    all_roles = Cache.GuildCache.get!(guild_id).roles |> Enum.filter(fn {_, r} -> !r.managed and r.name != "@everyone" end)
+    options = all_roles |> Enum.map(fn {id, %{name: n}} ->
+      %Component.Option{label: n, value: id, default: Enum.member?(values, id)}
+    end)
+    menu = Component.SelectMenu.select_menu("roles:choose_roles:select", placeholder: "Choose roles", options: options, min_values: 0, max_values: min(10, length(options)))
+    row1 = Component.ActionRow.action_row
+    row1 = Component.ActionRow.put row1, menu
+    row1
+  end
+  defp second_component_row(type,_,_,_) do
+    Logger.warning "second_component_row not defined for type #{inspect type}"
+    []
+  end
 
   defp find_component(nil, _), do: nil
   defp find_component([], _), do: nil
