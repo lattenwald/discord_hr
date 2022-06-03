@@ -308,7 +308,7 @@ defmodule DiscordHr.Roles do
     end)
 
     Storage.put([guild_id, @key, name, :roles], values)
-    DiscordHr.respond_to_component interaction, "Set #{length values}` roles for `#{name}` group", []
+    DiscordHr.respond_to_component interaction, "Set `#{length values}` roles for `#{name}` group", []
   end
 
   def handle_component(:max_count_select, interaction =
@@ -454,4 +454,24 @@ defmodule DiscordHr.Roles do
   defp find_component(%{components: components}, custom_id) do
     find_component(components, custom_id)
   end
+
+  @impl true
+  def handle_event({:GUILD_ROLE_DELETE, {guild_id, %{id: role_id}}, _ws_state}) do
+    fun = fn data ->
+      case Map.get(data, @key) do
+        nil -> data
+        groups = %{} ->
+          new_groups = groups
+                       |> Enum.map(fn {group_name, group} ->
+                         {group_name, Map.update(group, :roles, [], fn roles -> roles |> Enum.filter(& &1 != role_id) end)}
+                       end)
+                       |> Enum.into(%{})
+          Map.put(data, @key, new_groups)
+      end
+    end
+
+    Storage.update [guild_id], fun
+  end
+  def handle_event(_), do: :noop
+
 end

@@ -100,6 +100,10 @@ defmodule DiscordHr.Consumer do
     @command_modules |> Enum.each(fn module -> module.handle_event(event) end)
   end
 
+  def handle_event(event = {:GUILD_ROLE_DELETE, _, _ws_state}) do
+    @command_modules |> Enum.each(fn module -> module.handle_event(event) end)
+  end
+
   def handle_event({event, _, _}) do
     IO.inspect event
   end
@@ -117,7 +121,7 @@ defmodule DiscordHr.Consumer do
         Logger.warning "no handler for interaction #{inspect path} #{inspect handlers}~n#{inspect interaction}"
         DiscordHr.respond_to_component interaction, "Can't handle that, report to bot author"
       {:handler, module} ->
-        Logger.debug "handling #{inspect path} in #{module}"
+        Logger.debug "handling component #{inspect path} in #{module}"
         module.component_react(interaction, rest)
       reaction when is_atom(reaction) ->
         handle_component(reaction, interaction, rest)
@@ -142,7 +146,7 @@ defmodule DiscordHr.Consumer do
         Logger.warning "no handler for interaction #{inspect path} #{inspect handlers}~n#{inspect interaction}"
         DiscordHr.respond_to_interaction interaction, "Can't handle that, report to bot author"
       {:handler, module} ->
-        Logger.debug "handling #{inspect path} in #{module}"
+        Logger.debug "handling command #{inspect path} in #{module}"
         module.interaction_react(interaction, rest)
       reaction when is_atom(reaction) ->
         handle_application_command(reaction, interaction, rest)
