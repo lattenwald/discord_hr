@@ -9,57 +9,71 @@ defmodule DiscordHr.Roles do
   @key :roles_groups
   @empty_group %{enabled: false, max: 1, roles: []}
 
-  @command %{
-    name: "roles",
-    description: "Roles stuff",
-    options: [%{
-      name: "groups",
-      description: "Setup roles groups",
-      type: 2,
-      default_member_permission: "0",
-      options: [%{
-        name: "list",
-        description: "List roles groups",
-        type: 1
-      }, %{
-        name: "add",
-        description: "Add roles group",
-        type: 1,
-        options: [%{
-          name: "name",
-          description: "name",
-          type: 3,
-          required: true
-        }]
-      }, %{
-        name: "delete",
-        description: "Delete roles groups",
-        type: 1
-      }, %{
-        name: "enable",
-        description: "Enable roles groups",
-        type: 1
-      }, %{
-        name: "disable",
-        description: "Disable roles groups",
-        type: 1
-      }, %{
-        name: "max_roles",
-        description: "Setup max roles count for a roles group",
-        type: 1
-      }, %{
-        name: "choose",
-        description: "Set roles for a group",
-        type: 1
-      }]
-    }, %{
-      name: "test",
-      description: "test",
-      type: 1
-    }]
-  }
   @impl true
-  def guild_application_command(_), do: @command
+  def guild_application_command(guild_id) do
+    groups = Storage.get([guild_id, @key])
+    group_names = Map.keys groups
+    choices = group_names |> Enum.map(& %{name: &1, value: &1})
+
+    %{
+      name: "roles",
+      description: "Roles stuff",
+      options: [%{
+        name: "groups",
+        description: "Setup roles groups",
+        type: 2,
+        default_member_permission: "0",
+        options: [%{
+          name: "list",
+          description: "List roles groups",
+          type: 1
+        }, %{
+          name: "setup",
+          description: "Setup role group",
+          type: 1,
+          options: [%{
+            name: "group",
+            description: "choose icon",
+            type: 3, choices: choices, required: true
+          }]
+        }, %{
+          name: "add",
+          description: "Add roles group",
+          type: 1,
+          options: [%{
+            name: "name",
+            description: "name",
+            type: 3,
+            required: true
+          }]
+        }, %{
+          name: "delete",
+          description: "Delete roles groups",
+          type: 1
+        }, %{
+          name: "enable",
+          description: "Enable roles groups",
+          type: 1
+        }, %{
+          name: "disable",
+          description: "Disable roles groups",
+          type: 1
+        }, %{
+          name: "max_roles",
+          description: "Setup max roles count for a roles group",
+          type: 1
+        }, %{
+          name: "choose",
+          description: "Set roles for a group",
+          type: 1
+        }]
+        }, %{
+          name: "test",
+          description: "test",
+          type: 1
+        }]
+      }
+  end
 
   @impl true
   def command_handlers do
@@ -72,6 +86,7 @@ defmodule DiscordHr.Roles do
         "disable" => :disable_groups,
         "max_roles" => :set_max_roles,
         "choose" => :choose_group_roles,
+        "setup" => :group_setup,
       }
     }}
   end
@@ -95,6 +110,10 @@ defmodule DiscordHr.Roles do
         "select" => :max_count_select
       }, "choose_roles" => %{
         "select" => :select_group_roles
+      }, "setup" => %{
+        "select" => :setup_select,
+        "next" => :setup_next,
+        "prev" => :setup_prev,
       }
       }}
   end
@@ -206,6 +225,10 @@ defmodule DiscordHr.Roles do
     end
   end
 
+  def handle_application_command(:group_setup, interaction = %{guild_id: guild_id}, [%{"group" => name}]) do
+    {text, components} = setup_group_components(guild_id, name)
+    DiscordHr.respond_to_interaction interaction, text, components
+  end
 
   def handle_component(:group_delete_select, interaction = %{guild_id: guild_id, data: %{values: selected}}, []) do
     components = delete_group_components(guild_id, selected)
@@ -346,6 +369,42 @@ defmodule DiscordHr.Roles do
     DiscordHr.respond_to_component(interaction, "", components)
   end
 
+  def handle_component(:setup_select, interaction = %{
+    guild_id: guild_id,
+    data: %{values: values}
+  }, [step | rest]) do
+    {step, ""} = Integer.parse step
+    name = Enum.join rest, ":"
+    values = fix_values(values, step)
+    {text, components} = setup_group_components(guild_id, name, step, values)
+    DiscordHr.respond_to_component interaction, text, components
+  end
+
+  def handle_component(:setup_next, interaction = %{
+    guild_id: guild_id,
+    message: %{components: components}
+  }, path = [step | rest]) do
+    {step, ""} = Integer.parse step
+    name = Enum.join rest, ":"
+    selected = components_selected(components)
+    menu_id = "roles:setup:select:" <> Enum.join(path, ":")
+    values = selected[menu_id] |> fix_values(step)
+
+    save_progress(step, guild_id, name, values)
+
+    {text, components} = setup_group_components(guild_id, name, step+1)
+    DiscordHr.respond_to_component interaction, text, components
+  end
+
+  def handle_component(:setup_prev, interaction = %{
+    guild_id: guild_id
+  }, [step | rest]) do
+    {step, ""} = Integer.parse step
+    name = Enum.join rest, ":"
+    {text, components} = setup_group_components(guild_id, name, step-1)
+    DiscordHr.respond_to_component interaction, text, components
+  end
+
 
   defp delete_group_components(guild_id, selected \\ []) do
     groups = Storage.get([guild_id, @key], %{})
@@ -459,6 +518,24 @@ defmodule DiscordHr.Roles do
     find_component(components, custom_id)
   end
 
+  defp components_selected(nil), do: %{}
+  defp components_selected([]), do: %{}
+  defp components_selected(components = [_|_]), do: components_selected(components, %{})
+  defp components_selected([], acc), do: acc
+  defp components_selected([comp|rest], acc) do
+    acc = case comp do
+      %{type: 3, custom_id: id, options: options} ->
+        selected = (options || []) |> Enum.filter(&Map.get(&1, :default, false)) |> Enum.map(& &1.value)
+        acc |> Map.put(id, selected)
+      %{type: 1, components: components} ->
+        row_data = components_selected(components)
+        acc |> Map.merge(row_data)
+      %{} ->
+        acc
+    end
+    components_selected(rest, acc)
+  end
+
   @impl true
   def handle_event({:GUILD_ROLE_DELETE, {guild_id, %{id: role_id}}, _ws_state}) do
     fun = fn data ->
@@ -477,5 +554,113 @@ defmodule DiscordHr.Roles do
     Storage.update [guild_id], fun
   end
   def handle_event(_), do: :noop
+
+  defp fix_values(step, values) when is_binary(step), do: fix_values(String.to_integer(step), values)
+  defp fix_values(values, 1), do: Enum.map(values, &String.to_integer/1)
+  defp fix_values(["False"], 3), do: false
+  defp fix_values(["True"], 3), do: true
+  defp fix_values(values, _), do: values
+
+  defp save_progress(1, guild_id, name, roles) do
+    Storage.put([guild_id, @key, name, :roles], roles)
+  end
+  defp save_progress(2, guild_id, name, [max]) do
+    {max, ""} = Integer.parse max
+    Storage.put([guild_id, @key, name, :max], max)
+  end
+  defp save_progress(2, _, _, []), do: :noop
+  defp save_progress(3, guild_id, name, enabled) do
+    Storage.put([guild_id,  @key, name, :enabled], enabled)
+  end
+
+  def setup_group_components(guild_id, name), do: setup_group_components(guild_id, name, 1)
+  def setup_group_components(guild_id, name, step), do: setup_group_components(guild_id, name, step, nil)
+
+  def setup_group_components(guild_id, name, step = 1, selected) do
+    text = "Roles group `#{name}`\nChoose roles"
+
+    roles = Storage.get([guild_id, @key, name, :roles], [])
+    all_roles = Cache.GuildCache.get!(guild_id).roles |> Enum.filter(fn {_, r} -> !r.managed and r.name != "@everyone" end)
+    options = all_roles |> Enum.map(fn {id, %{name: n}} ->
+      %Component.Option{label: n, value: id, default: Enum.member?((selected || roles), id)}
+    end)
+    menu = Component.SelectMenu.select_menu("roles:setup:select:#{step}:#{name}", placeholder: "Choose roles", options: options, min_values: 0, max_values: min(20, length(options)))
+    menu_row = Component.ActionRow.action_row components: [menu]
+
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("<<", "none", disabled: true),
+      Component.Button.interaction_button(">>", "roles:setup:next:#{step}:#{name}")
+    ]
+
+    {text, [menu_row, buttons]}
+  end
+
+  def setup_group_components(guild_id, name, step = 2, selected) do
+    all_roles = Cache.GuildCache.get!(guild_id).roles
+    %{roles: roles, max: max} = Storage.get([guild_id, @key, name])
+    roles_text = roles
+                 |> Enum.map(&"    `#{all_roles[&1].name}`")
+                 |> Enum.join("\n")
+
+    text = "Roles group `#{name}`\n#{roles_text}\nChoose max selectable roles"
+
+    menu = Component.SelectMenu.select_menu("roles:setup:select:#{step}:#{name}",
+      placeholder: "#{max}",
+      options: 1 .. max(1, length(roles)) |> Enum.map(& %Component.Option{label: "#{&1}", value: &1, default: ("#{selected}" || "#{max}") == "#{&1}"})
+    )
+    menu_row = Component.ActionRow.action_row components: [menu]
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("<<", "roles:setup:prev:#{step}:#{name}"),
+      Component.Button.interaction_button(">>", "roles:setup:next:#{step}:#{name}")
+    ]
+
+    {text, [menu_row, buttons]}
+  end
+
+  def setup_group_components(guild_id, name, step = 3, selected) do
+    all_roles = Cache.GuildCache.get!(guild_id).roles
+    %{roles: roles, max: max, enabled: enabled} = Storage.get([guild_id, @key, name])
+    roles_text = roles
+                 |> Enum.map(&"    `#{all_roles[&1].name}`")
+                 |> Enum.join("\n")
+
+    text = "Roles group `#{name}`\n#{roles_text}\nMax `#{max}` roles selectable\nEnable?"
+
+    default = case selected do
+      nil -> enabled
+      _ -> selected
+    end
+    menu = Component.SelectMenu.select_menu("roles:setup:select:#{step}:#{name}",
+      placeholder: "enable?",
+      options: [
+        %Component.Option{label: "on", value: true, default: default},
+        %Component.Option{label: "off", value: false, default: !default},
+      ]
+    )
+    menu_row = Component.ActionRow.action_row components: [menu]
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("<<", "roles:setup:prev:#{step}:#{name}"),
+      Component.Button.interaction_button(">>", "roles:setup:next:#{step}:#{name}")
+    ]
+
+    {text, [menu_row, buttons]}
+  end
+
+  def setup_group_components(guild_id, name, step = 4, _) do
+    all_roles = Cache.GuildCache.get!(guild_id).roles
+    %{roles: roles, max: max, enabled: enabled} = Storage.get([guild_id, @key, name])
+    roles_text = roles
+                 |> Enum.map(&"    `#{all_roles[&1].name}`")
+                 |> Enum.join("\n")
+
+    text = "Roles group `#{name}`\n#{roles_text}\nMax `#{max}` roles selectable\nenabled: **#{if enabled, do: "yes", else: "no"}**"
+
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("<<", "roles:setup:prev:#{step}:#{name}"),
+      Component.Button.interaction_button("Done!", "roles:setup:next:#{step}:#{name}", disabled: true)
+    ]
+
+    {text, [buttons]}
+  end
 
 end
