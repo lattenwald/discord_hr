@@ -140,10 +140,14 @@ defmodule DiscordHr.Roles do
       0 ->
         DiscordHr.respond_to_interaction interaction, "No roles groups are set up"
       _ ->
+        all_roles = Cache.GuildCache.get!(guild_id).roles
         text = groups
                |> Enum.zip(1 .. 1000)
                |> Enum.map(fn {{name, %{enabled: enabled, roles: roles, max: max}}, num} ->
-                 "#{num}. `#{name}` [#{max}/#{length(roles)}] **#{if enabled, do: "on", else: "off"}**"
+                 roles_text = roles
+                              |> Enum.map(&"    `#{all_roles[&1].name}`")
+                              |> Enum.join("\n")
+                 "#{num}. `#{name}` : **#{if enabled, do: "on", else: "off"}**, can select #{max} of #{length(roles)}\n" <> roles_text
                end)
                |> Enum.join("\n")
         DiscordHr.respond_to_interaction interaction, text
