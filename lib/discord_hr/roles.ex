@@ -313,7 +313,11 @@ defmodule DiscordHr.Roles do
   end
   defp save_progress(2, _, _, []), do: :noop
   defp save_progress(3, guild_id, name, enabled) do
+    prev = Storage.get([guild_id, @key, name, :enabled], nil)
     Storage.put([guild_id,  @key, name, :enabled], enabled)
+    if prev != enabled do
+      DiscordHr.Role.update_guild_application_command guild_id
+    end
   end
 
   defp setup_group_components(guild_id, name), do: setup_group_components(guild_id, name, 1)
@@ -407,6 +411,7 @@ defmodule DiscordHr.Roles do
   end
 
   defp update_guild_application_command(guild_id) do
+    DiscordHr.Role.update_guild_application_command(guild_id)
     with {:ok, commands} <- Api.get_guild_application_commands(guild_id),
          %{id: command_id} <- Enum.find(commands, fn %{name: name} -> name == "roles" end)
     do

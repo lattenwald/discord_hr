@@ -6,7 +6,7 @@ defmodule DiscordHr.Consumer do
   alias Nostrum.Api
   alias Nostrum.Cache
 
-  @command_modules [DiscordHr.Voice, DiscordHr.Icons, DiscordHr.Roles]
+  @command_modules [DiscordHr.Voice, DiscordHr.Icons, DiscordHr.Roles, DiscordHr.Role]
 
   # application commands handlers
   @command_handlers %{
