@@ -34,7 +34,7 @@ defmodule DiscordHr.Voice do
   @command %{
     name: "voice",
     description: "Voice configuration",
-    default_member_permission: "0",
+    default_permission: false,
     options: [%{
       name: "channel",
       description: "choose channel to manage",

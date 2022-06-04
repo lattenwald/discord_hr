@@ -24,11 +24,11 @@ defmodule DiscordHr.Roles do
     %{
       name: "roles",
       description: "Roles stuff",
+      default_permission: false,
       options: [%{
         name: "groups",
         description: "Setup roles groups",
         type: 2,
-        default_member_permission: "0",
         options: [%{
           name: "list",
           description: "List roles groups",
@@ -62,10 +62,6 @@ defmodule DiscordHr.Roles do
             type: 3, choices: choices, required: true
           }]
         }]
-        }, %{
-          name: "test",
-          description: "test",
-          type: 1
         }]
       }
   end
