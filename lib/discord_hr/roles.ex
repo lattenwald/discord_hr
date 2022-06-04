@@ -5,10 +5,14 @@ defmodule DiscordHr.Roles do
   alias DiscordHr.Storage
   alias Nostrum.Struct.Component
   alias Nostrum.Cache
+  alias Nostrum.Api
 
   @key :roles_groups
   @empty_group %{enabled: false, max: 1, roles: []}
+  @max_name_length 25
 
+  # TODO remove unneeded commands
+  # TODO remove unused functions
   @impl true
   def guild_application_command(guild_id) do
     groups = Storage.get([guild_id, @key])
@@ -175,12 +179,17 @@ defmodule DiscordHr.Roles do
 
   def handle_application_command(:add_group, interaction = %{guild_id: guild_id}, [%{"name" => name}]) do
     groups = Storage.get([guild_id, @key], %{})
-    if Map.has_key?(groups, name) do
-      DiscordHr.respond_to_interaction interaction, "Group with this name is already present"
-    else
-      groups = Map.put(groups, name, @empty_group)
-      Storage.put([guild_id, @key], groups)
-      DiscordHr.respond_to_interaction interaction, "Group `#{name}` added"
+    name = String.trim name
+    cond do
+      String.length(name) > @max_name_length ->
+        DiscordHr.respond_to_interaction interaction, "Group name too long: max name length is #{@max_name_length}"
+      Map.has_key?(groups, name) ->
+        DiscordHr.respond_to_interaction interaction, "Group with this name is already present"
+      true ->
+        groups = Map.put(groups, name, @empty_group)
+        Storage.put([guild_id, @key], groups)
+        update_guild_application_command(guild_id)
+        DiscordHr.respond_to_interaction interaction, "Group `#{name}` added"
     end
   end
 
@@ -252,6 +261,7 @@ defmodule DiscordHr.Roles do
       groups = Storage.get([guild_id, @key], %{})
       new_groups = remove |> List.foldl(groups, &Map.delete(&2, &1))
       Storage.put([guild_id, @key], new_groups)
+      update_guild_application_command(guild_id)
       DiscordHr.respond_to_component interaction, "Removed **#{map_size(groups) - map_size(new_groups)}** groups"
     else
       _ ->
@@ -661,6 +671,27 @@ defmodule DiscordHr.Roles do
     ]
 
     {text, [buttons]}
+  end
+
+  def update_guild_application_command(guild_id) do
+    with {:ok, commands} <- Api.get_guild_application_commands(guild_id),
+         %{id: command_id} <- Enum.find(commands, fn %{name: name} -> name == "roles" end)
+    do
+      command = guild_application_command(guild_id)
+      case Api.edit_guild_application_command(guild_id, command_id, command) |> IO.inspect do
+        {:error, %{status_code: 429, response: %{retry_after: retry_after}}} ->
+          Logger.warning "failed setting guild application command for guild #{guild_id}, will retry in #{retry_after} seconds"
+          :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :update_guild_application_command, [guild_id])
+        {:error, %{response: %{message: message}}} ->
+          retry_after = 10
+          Logger.warning "failed setting guild application command for guild #{guild_id}: #{message} will retry in #{retry_after} seconds"
+          :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :update_guild_application_command, [guild_id])
+        {:ok, _} ->
+          :ok
+      end
+    else
+      _ -> :noop
+    end
   end
 
 end
