@@ -10,6 +10,8 @@ Build docker image with `./build.sh`
 
 Move it to server via docker hub or somehow
 
+Copy `config.toml.example` to `config.toml`, put your discord bot token there. Discord token is obtainable from https://discord.com/developers/applications, create an app there, a bot in this app. Bot requires permissions to manage guild, channels, roles and to move members.
+
 Copy empty storage `storage.bin.empty` from repo into `storage.bin` to be mounted into docker: `cp storage.bin.empty storage.bin` in case you're going to use `run.sh`
 
 Run the container: `./run.sh`
