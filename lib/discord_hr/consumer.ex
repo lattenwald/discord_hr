@@ -6,13 +6,10 @@ defmodule DiscordHr.Consumer do
   alias Nostrum.Api
   alias Nostrum.Cache
 
-  @command_modules [DiscordHr.Voice, DiscordHr.Icons, DiscordHr.Roles, DiscordHr.Role]
+  @command_modules [DiscordHr.Voice, DiscordHr.Icons, DiscordHr.Roles, DiscordHr.Role, DiscordHr.Ping]
 
   # application commands handlers
-  @command_handlers %{
-    "pingon" => :set_pingon,
-    "pingoff" => :set_pingoff
-  }
+  @command_handlers %{}
 
   defp command_handlers do
     @command_modules |> List.foldl(@command_handlers, fn module, acc ->
@@ -35,15 +32,7 @@ defmodule DiscordHr.Consumer do
     end)
   end
 
-  @commands [
-    %{name: "pingon",
-      description_localizations: %{"ru" => "Включить роль для пингов в этом канале"},
-      description: "Set role for pings in this channel"},
-    %{name: "pingoff",
-      description_localizations: %{"ru" => "Убрать роль для пингов в этом канале"},
-      description: "Remove role for pings in this channel"},
-
-    ]
+  @commands []
 
   defp guild_application_commands(guild_id) do
     @command_modules |> List.foldl(@commands, fn module, acc ->
@@ -164,57 +153,7 @@ defmodule DiscordHr.Consumer do
   end
   def extract_interaction_path(%{data: data}), do: extract_interaction_path(data)
 
-  def handle_application_command(:set_pingon, interaction = %{
-    guild_id: guild_id, channel_id: channel_id,
-    member: %{user: %{id: user_id, username: username}, roles: user_roles},
-    data: %{name: "pingon"}
-  }, _) do
-    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
-      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
-        nil ->
-          DiscordHr.respond_to_interaction interaction, "There's no ping role for this channel"
-        {role_id, _} ->
-          if Enum.member? user_roles, role_id do
-            DiscordHr.respond_to_interaction interaction, "You already have role `@#{channel_name}`"
-          else
-            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
-              {:ok} ->
-                DiscordHr.respond_to_interaction interaction, "Added `@#{channel_name}` role"
-              {:error, %{response: %{message: message}}} ->
-                DiscordHr.respond_to_interaction interaction, "Error: #{message}"
-            end
-          end
-      end
-    else
-      _ -> DiscordHr.respond_to_interaction interaction, "Cannot find channel"
-    end
-  end
-
-  def handle_application_command(:set_pingoff, interaction = %{
-    guild_id: guild_id, channel_id: channel_id,
-    member: %{user: %{id: user_id, username: username}, roles: user_roles},
-    data: %{name: "pingoff"}
-  }, _) do
-    with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
-      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
-        nil ->
-          DiscordHr.respond_to_interaction interaction, "There's no ping role for this channel"
-        {role_id, _} ->
-          if Enum.member? user_roles, role_id do
-            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
-              {:ok} ->
-                DiscordHr.respond_to_interaction interaction, "Removed `@#{channel_name}` role"
-              {:error, %{response: %{message: message}}} ->
-                DiscordHr.respond_to_interaction interaction, "Error: #{message}"
-            end
-          else
-              DiscordHr.respond_to_interaction interaction, "You don't have role `@#{channel_name}` set"
-          end
-      end
-    else
-      _ -> DiscordHr.respond_to_interaction interaction, "Cannot find channel"
-    end
-  end
+  def handle_application_command(_, _, _), do: :noop
 
   ###############################################################
   # helpers

@@ -22,7 +22,7 @@ defmodule DiscordHr.Roles do
     choices = group_names |> Enum.map(& %{name: &1, value: &1})
 
     %{
-      name: "roles",
+      name: "adminroles",
       description: "Roles stuff",
       default_permission: false,
       options: [%{
@@ -68,7 +68,7 @@ defmodule DiscordHr.Roles do
 
   @impl true
   def command_handlers do
-    {"roles", %{
+    {"adminroles", %{
       "groups" => %{
         "list" => :groups_list,
         "add" => :add_group,
