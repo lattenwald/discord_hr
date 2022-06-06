@@ -61,6 +61,7 @@ defmodule DiscordHr.Role do
 
       all_roles = Cache.GuildCache.get!(guild_id).roles
       options = group_roles
+                |> Enum.sort_by(& all_roles[&1].position, &>=/2)
                 |> Enum.map(& %Component.Option{label: all_roles[&1].name, value: &1, default: Enum.member?(user_roles, &1)})
       menu = Component.SelectMenu.select_menu("role:select:#{name}", placeholder: placeholder, options: options, min_values: 0, max_values: min(max, length(options)))
       menu_row = Component.ActionRow.action_row components: [menu]
