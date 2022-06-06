@@ -50,14 +50,14 @@ defmodule DiscordHr.Ping do
             "Added `@#{channel_name}` role" }
       end
 
-      case roles |> Enum.find(fn ({_, %{name: name}}) -> name == channel_name end) do
+      case roles |> Enum.find(fn ({_, r}) -> r.name == channel_name and r.mentionable end) do
         nil ->
           DiscordHr.respond_to_interaction interaction, text_norole
         {role_id, _} ->
           if Enum.member? user_roles, role_id do
             DiscordHr.respond_to_interaction interaction, text_alreadyhave
           else
-            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+            case Api.add_guild_member_role(guild_id, user_id, role_id, "#{username} used /ping in #{channel_name}") do
               {:ok} ->
                 DiscordHr.respond_to_interaction interaction, text_ok
               {:error, %{response: %{message: message}}} ->
@@ -90,7 +90,7 @@ defmodule DiscordHr.Ping do
           DiscordHr.respond_to_interaction interaction, text_norole
         {role_id, _} ->
           if Enum.member? user_roles, role_id do
-            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /pingme in #{channel_name}") do
+            case Api.remove_guild_member_role(guild_id, user_id, role_id, "#{username} used /ping in #{channel_name}") do
               {:ok} ->
                 DiscordHr.respond_to_interaction interaction, text_ok
               {:error, %{response: %{message: message}}} ->

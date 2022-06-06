@@ -82,10 +82,11 @@ defmodule DiscordHr.Role do
       locale: locale,
       data: %{values: values}
     }, ["select", name]) do
+      group_roles = Storage.get([guild_id, @key, name, :roles]) |> MapSet.new
       user_roles = MapSet.new user_roles
       values = values |> Enum.map(&String.to_integer/1) |> MapSet.new
       add_roles = MapSet.difference values, user_roles
-      remove_roles = MapSet.difference user_roles, values
+      remove_roles = group_roles |> MapSet.intersection(user_roles) |> MapSet.difference(values)
       Logger.debug "add roles: #{inspect add_roles}, remove roles: #{inspect remove_roles}"
 
       add_roles |> Enum.each(&Api.add_guild_member_role(guild_id, user_id, &1, "#{username} selected roles in group #{name}"))
