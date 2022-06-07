@@ -18,7 +18,6 @@ defmodule DiscordHr.Role do
     group_names = Storage.get([guild_id, @key])
                   |> Enum.filter(fn {_, %{enabled: enabled}} -> enabled end)
                   |> Enum.map(fn {n, _} -> n end)
-                  |> IO.inspect
     choices = group_names |> Enum.map(& %{name: &1, value: &1})
 
     %{name: "role",
