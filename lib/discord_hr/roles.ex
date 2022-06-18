@@ -255,7 +255,7 @@ defmodule DiscordHr.Roles do
     names = components_selected(interaction)["roles:delete:select"]
     names |> Enum.each(& Storage.delete [guild_id, @key, &1])
     deleted = names |> Enum.zip(1..1000) |> Enum.map(fn {n, i} -> "  #{i}. `#{n}`" end) |> Enum.join("\n")
-    DiscordHr.respond_to_interaction interaction, "Deleted roles groups:\n#{deleted}"
+    DiscordHr.respond_to_component interaction, "Deleted roles groups:\n#{deleted}"
     DiscordHr.Role.update_guild_application_command guild_id
   end
 
