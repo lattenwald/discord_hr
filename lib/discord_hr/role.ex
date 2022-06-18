@@ -18,17 +18,13 @@ defmodule DiscordHr.Role do
     group_names = Storage.get([guild_id, @key])
                   |> Enum.filter(fn {_, %{enabled: enabled}} -> enabled end)
                   |> Enum.map(fn {n, _} -> n end)
-    choices = group_names |> Enum.map(& %{name: &1, value: &1})
+    subcommands = group_names |> Enum.map(& %{name: &1, description: &1, type: 1})
 
     %{name: "role",
       description: "Choose role",
       description_localizations: %{"ru" => "Выбрать роль"},
-      options: [%{
-        name: "group",
-        description: "roles group",
-        description_localizations: %{"ru" => "группа ролей"},
-        type: 3, choices: choices, required: true
-      }]}
+      options: subcommands
+    }
   end
 
   @impl true
@@ -44,7 +40,7 @@ defmodule DiscordHr.Role do
   @impl true
   def interaction_react(
     interaction = %{guild_id: guild_id, member: %{roles: user_roles}, locale: locale},
-    [%{"group" => name}]
+    [name]
   ) do
     {text, placeholder, errtext} = case locale do
       "ru" <> _ ->

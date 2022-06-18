@@ -164,9 +164,10 @@ defmodule DiscordHr.Consumer do
       {:error, %{status_code: 429, response: %{retry_after: retry_after}}} ->
         Logger.warning "failed setting guild application commands for guild #{guild_id}, will retry in #{retry_after} seconds"
         :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :set_guild_commands, [guild_id, commands])
-      {:error, %{response: %{message: message}}} ->
+      err = {:error, %{response: %{message: message}}} ->
         retry_after = 10
-        Logger.warning "failed setting guild application commands for guild #{guild_id}: #{message} will retry in #{retry_after} seconds"
+        Logger.error "failed setting guild application commands for guild #{guild_id}: #{message} will retry in #{retry_after} seconds"
+        Logger.error inspect(err)
         :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :set_guild_commands, [guild_id, commands])
       {:ok, _} ->
         :ok
