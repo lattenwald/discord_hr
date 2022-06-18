@@ -61,7 +61,7 @@ defmodule DiscordHr.Consumer do
     interaction_react(interaction, path)
   end
 
-  def handle_event({:INTERACTION_CREATE, interaction = %{type: 3, data: %{custom_id: id}}, _ws_state}) do
+  def handle_event({:INTERACTION_CREATE, interaction = %{type: type, data: %{custom_id: id}}, _ws_state}) when type == 3 or type == 5 do
     path = String.split(id, ":")
     component_react(interaction, path)
   end

@@ -3,13 +3,15 @@ defmodule DiscordHr.Roles do
   use DiscordHr.CommandModule
 
   alias DiscordHr.Storage
+  alias Nostrum.Struct
   alias Nostrum.Struct.Component
   alias Nostrum.Cache
   alias Nostrum.Api
 
   @key :roles_groups
   @empty_group %{enabled: false, max: 1, roles: []}
-  @max_name_length 25
+  @max_name_length 10
+  @name_regex ~r/^[a-z][a-z0-9_]*$/
 
   ###############################################################
   # callbacks
@@ -41,21 +43,14 @@ defmodule DiscordHr.Roles do
           name: "add",
           description: "Add roles group",
           type: 1,
-          options: [%{
-            name: "name",
-            description: "group name",
-            type: 3,
-            required: true
-          }]
         }, %{
           name: "delete",
           description: "Delete roles groups",
-          type: 1,
-          options: [%{
-            name: "group",
-            description: "group to delete",
-            type: 3, choices: choices, required: true
-          }]
+          type: 1
+        }, %{
+          name: "rename",
+          description: "Rename group",
+          type: 1
         }]
         }]
       }
@@ -68,6 +63,7 @@ defmodule DiscordHr.Roles do
         "list" => :groups_list,
         "add" => :add_group,
         "delete" => :delete_group,
+        "rename" => :rename_group,
         "setup" => :group_setup,
       }
     }}
@@ -96,6 +92,15 @@ defmodule DiscordHr.Roles do
         "select" => :setup_select,
         "next" => :setup_next,
         "prev" => :setup_prev,
+      }, "input" => %{
+        "add_name" => :add_name,
+        "rename" => :rename_input,
+      }, "add_name" => %{
+        "do_setup" => :added_setup,
+        "cancel_setup" => :added_nosetup
+      }, "rename" => %{
+        "select" => :rename_select,
+        "button" => :rename_selected,
       }
       }}
   end
@@ -178,30 +183,29 @@ defmodule DiscordHr.Roles do
     end
   end
 
-  defp handle_application_command(:add_group, interaction = %{guild_id: guild_id}, [%{"name" => name}]) do
-    groups = Storage.get([guild_id, @key], %{})
-    name = String.trim name
-    cond do
-      String.length(name) > @max_name_length ->
-        DiscordHr.respond_to_interaction interaction, "Group name too long: max name length is #{@max_name_length}"
-      Map.has_key?(groups, name) ->
-        DiscordHr.respond_to_interaction interaction, "Group with this name is already present"
-      true ->
-        groups = Map.put(groups, name, @empty_group)
-        Storage.put([guild_id, @key], groups)
-        update_guild_application_command(guild_id)
-        DiscordHr.respond_to_interaction interaction, "Group `#{name}` added"
+  defp handle_application_command(:add_group, interaction = %{guild_id: guild_id}, []) do
+    input = Component.TextInput.text_input("Group name: ^[a-z][a-z0-9_]*$", "roles:input:add_name:name", min_length: 1, max_length: @max_name_length, required: true)
+    row = Component.ActionRow.action_row components: [input]
+    Api.create_interaction_response(interaction, %{type: 9, data: %{title: "Group name", custom_id: "roles:input:add_name", components: [row]}})
+  end
+
+  defp handle_application_command(:delete_group, interaction = %{guild_id: guild_id}, []) do
+    case Storage.get([guild_id, @key], %{}) do
+      empty when map_size(empty) == 0 ->
+        DiscordHr.respond_to_interaction interaction, "No groups to delete"
+      _ ->
+        {text, components} = delete_group_components(guild_id)
+        DiscordHr.respond_to_interaction interaction, text, components
     end
   end
 
-  defp handle_application_command(:delete_group, interaction = %{guild_id: guild_id}, [%{"group" => name}]) do
-    case Storage.get([guild_id, @key, name]) do
-      nil ->
-        DiscordHr.respond_to_interaction interaction, "No such group exists"
-      %{} ->
-        Storage.delete([guild_id, @key, name])
-        update_guild_application_command(guild_id)
-        DiscordHr.respond_to_interaction interaction, "Group `#{name}` deleted"
+  defp handle_application_command(:rename_group, interaction = %{guild_id: guild_id}, []) do
+    case Storage.get([guild_id, @key], %{}) do
+      empty when map_size(empty) == 0 ->
+        DiscordHr.respond_to_interaction interaction, "No groups to rename"
+      _ ->
+        {text, components} = rename_group_components(guild_id)
+        DiscordHr.respond_to_interaction interaction, text, components
     end
   end
 
@@ -213,6 +217,77 @@ defmodule DiscordHr.Roles do
         {text, components} = setup_group_components(guild_id)
         DiscordHr.respond_to_interaction interaction, text, components
     end
+  end
+
+  defp handle_component(:rename_select, interaction = %{guild_id: guild_id, data: %{values: selected}}, []) do
+    {text, components} = rename_group_components(guild_id, selected)
+    DiscordHr.respond_to_component(interaction, text, components)
+  end
+
+  defp handle_component(:rename_selected, interaction, []) do
+    [name] = components_selected(interaction)["roles:rename:select"]
+    input = Component.TextInput.text_input("Renaming `#{name}`", "roles:input:rename", min_length: 1, max_length: @max_name_length, required: true)
+    row = Component.ActionRow.action_row components: [input]
+    Api.create_interaction_response(interaction, %{type: 9, data: %{title: "Renaming `#{name}`", custom_id: "roles:input:rename:#{name}", components: [row]}})
+  end
+
+  defp handle_component(:rename_input, interaction = %{guild_id: guild_id}, old_name) do
+    old_name = Enum.join(old_name, ":")
+    new_name = get_input(interaction)["roles:input:rename"] |> IO.inspect
+    case validate_group_name(guild_id, new_name) do
+      {:error, msg} ->
+        DiscordHr.respond_to_interaction interaction, msg
+      :ok ->
+        {group, groups} = Storage.get([guild_id, @key]) |> Map.pop!(old_name)
+        groups = groups |> Map.put_new(new_name, group)
+        Storage.put [guild_id, @key], groups
+        DiscordHr.respond_to_component interaction, "Group `#{old_name}` renamed to `#{new_name}`"
+        DiscordHr.Role.update_guild_application_command guild_id
+    end
+  end
+
+  defp handle_component(:group_delete_select, interaction = %{guild_id: guild_id, data: %{values: selected}}, []) do
+    {text, components} = delete_group_components(guild_id, selected)
+    DiscordHr.respond_to_component(interaction, text, components)
+  end
+
+  defp handle_component(:group_delete_button, interaction = %{guild_id: guild_id}, []) do
+    names = components_selected(interaction)["roles:delete:select"]
+    names |> Enum.each(& Storage.delete [guild_id, @key, &1])
+    deleted = names |> Enum.zip(1..1000) |> Enum.map(fn {n, i} -> "  #{i}. `#{n}`" end) |> Enum.join("\n")
+    DiscordHr.respond_to_interaction interaction, "Deleted roles groups:\n#{deleted}"
+    DiscordHr.Role.update_guild_application_command guild_id
+  end
+
+  defp handle_component(:add_name, interaction = %{guild_id: guild_id}, []) do
+    values = get_input(interaction)
+    name = values["roles:input:add_name:name"] |> String.trim |> String.downcase
+
+
+    case validate_group_name(guild_id, name) do
+      {:error, msg} ->
+        DiscordHr.respond_to_interaction interaction, msg
+      :ok ->
+        Storage.put([guild_id, @key, name], @empty_group)
+
+        buttons = Component.ActionRow.action_row components: [
+          Component.Button.interaction_button("Cancel", "roles:add_name:cancel_setup:#{name}", style: 1),
+          Component.Button.interaction_button("Setup", "roles:add_name:do_setup:#{name}")
+        ]
+
+        DiscordHr.respond_to_interaction interaction, "Group `#{name}` added, setup it now?", [buttons]
+    end
+  end
+
+  defp handle_component(:added_setup, interaction = %{guild_id: guild_id}, name) do
+    name = Enum.join(name, ":")
+    {text, components} = setup_group_components(guild_id, name, 1)
+    DiscordHr.respond_to_component interaction, text, components
+  end
+
+  defp handle_component(:added_nosetup, interaction = %{guild_id: guild_id}, name) do
+    name = Enum.join(name, ":")
+    DiscordHr.respond_to_component interaction, "Group `#{name}` added"
   end
 
   defp handle_component(:group_toggle_button,
@@ -282,7 +357,11 @@ defmodule DiscordHr.Roles do
     DiscordHr.respond_to_component interaction, text, components
   end
 
+  defp get_input(%Struct.Interaction{data: %{components: components}}) do
+    components_selected(components)
+  end
 
+  defp components_selected(%Struct.Interaction{message: %{components: components}}), do: components_selected(components)
   defp components_selected(nil), do: %{}
   defp components_selected([]), do: %{}
   defp components_selected(components = [_|_]), do: components_selected(components, %{})
@@ -292,6 +371,8 @@ defmodule DiscordHr.Roles do
       %{type: 3, custom_id: id, options: options} ->
         selected = (options || []) |> Enum.filter(&Map.get(&1, :default, false)) |> Enum.map(& &1.value)
         acc |> Map.put(id, selected)
+      %{type: 4, custom_id: id, value: value} ->
+        acc |> Map.put(id, value)
       %{type: 1, components: components} ->
         row_data = components_selected(components)
         acc |> Map.merge(row_data)
@@ -432,25 +513,45 @@ defmodule DiscordHr.Roles do
     {text, [buttons]}
   end
 
-  defp update_guild_application_command(guild_id) do
-    DiscordHr.Role.update_guild_application_command(guild_id)
-    with {:ok, commands} <- Api.get_guild_application_commands(guild_id),
-         %{id: command_id} <- Enum.find(commands, fn %{name: name} -> name == "roles" end)
-    do
-      command = guild_application_command(guild_id)
-      case Api.edit_guild_application_command(guild_id, command_id, command) do
-        {:error, %{status_code: 429, response: %{retry_after: retry_after}}} ->
-          Logger.warning "failed setting guild application command for guild #{guild_id}, will retry in #{retry_after} seconds"
-          :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :update_guild_application_command, [guild_id])
-        {:error, %{response: %{message: message}}} ->
-          retry_after = 10
-          Logger.warning "failed setting guild application command for guild #{guild_id}: #{message} will retry in #{retry_after} seconds"
-          :timer.apply_after(floor(retry_after * 1000) + 100, __MODULE__, :update_guild_application_command, [guild_id])
-        {:ok, _} ->
-          :ok
-      end
-    else
-      _ -> :noop
+  defp delete_group_components(guild_id), do: delete_group_components(guild_id, [])
+  defp delete_group_components(guild_id, selected) do
+    names = Storage.get([guild_id, @key]) |> Map.keys
+    text = "Choose roles groups to delete"
+    options = names |> Enum.map(& %Component.Option{label: &1, value: &1, default: Enum.member?(selected, &1)})
+    menu = Component.SelectMenu.select_menu("roles:delete:select", placeholder: "Choose groups to delete", options: options, min_values: 1, max_values: min(10, length(names)))
+    menu_row = Component.ActionRow.action_row components: [menu]
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("DELETE", "roles:delete:button", style: 4, disabled: selected == []),
+      Component.Button.interaction_button("Cancel", "cancel", style: 1)
+    ]
+    {text, [menu_row, buttons]}
+  end
+
+  defp rename_group_components(guild_id), do: rename_group_components(guild_id, [])
+  defp rename_group_components(guild_id, selected) do
+    names = Storage.get([guild_id, @key]) |> Map.keys
+    text = "Choose roles group to rename"
+    options = names |> Enum.map(& %Component.Option{label: &1, value: &1, default: [&1] == selected})
+    menu = Component.SelectMenu.select_menu("roles:rename:select", placeholder: "Choose group to rename", options: options, min_values: 1, max_values: 1)
+    menu_row = Component.ActionRow.action_row components: [menu]
+    buttons = Component.ActionRow.action_row components: [
+      Component.Button.interaction_button("Rename", "roles:rename:button", style: 1, disabled: selected == []),
+      Component.Button.interaction_button("Cancel", "cancel", style: 1)
+    ]
+    {text, [menu_row, buttons]}
+  end
+
+  defp validate_group_name(guild_id, name) do
+    existing = Storage.get([guild_id, @key]) |> Map.keys
+    cond do
+      String.length(name) > @max_name_length ->
+        {:error, "Group name is too long, shouldn't exceed #{@max_name_length} characters"}
+      not String.match? name, @name_regex ->
+        {:error, "Group name `#{name}` is invalid: should consist of latin letter, numbers and underscore, starting with letter"}
+      Enum.member?(existing, name) ->
+        {:error, "Group with name `#{name}` is already present"}
+      true ->
+        :ok
     end
   end
 
