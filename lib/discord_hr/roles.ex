@@ -11,6 +11,8 @@ defmodule DiscordHr.Roles do
   @key :roles_groups
   @empty_group %{enabled: false, max: 1, roles: []}
   @max_name_length 10
+  @setup_steps [:name, :roles, :max, :enable, :done]
+
   @name_regex ~r/^[a-z][a-z0-9_]*$/
 
   ###############################################################
@@ -215,7 +217,7 @@ defmodule DiscordHr.Roles do
 
   defp handle_component(:rename_input, interaction = %{guild_id: guild_id}, old_name) do
     old_name = Enum.join(old_name, ":")
-    new_name = get_input(interaction)["roles:rename:input"] |> IO.inspect
+    new_name = get_input(interaction)["roles:rename:input"]
     case validate_group_name(guild_id, new_name) do
       {:error, msg} ->
         DiscordHr.respond_to_component interaction, msg
@@ -263,7 +265,7 @@ defmodule DiscordHr.Roles do
 
   defp handle_component(:added_setup, interaction = %{guild_id: guild_id}, name) do
     name = Enum.join(name, ":")
-    {text, components} = setup_group_components(guild_id, name, 1)
+    {text, components} = setup_group_components(guild_id, name, Enum.at(@setup_steps, 1))
     DiscordHr.respond_to_component interaction, text, components
   end
 
@@ -276,7 +278,7 @@ defmodule DiscordHr.Roles do
     guild_id: guild_id,
     data: %{values: values}
   }, [step | rest]) do
-    {step, ""} = Integer.parse step
+    step = String.to_existing_atom(step)
     name = Enum.join rest, ":"
     values = fix_values(values, step)
     {text, components} = setup_group_components(guild_id, name, step, values)
@@ -287,27 +289,27 @@ defmodule DiscordHr.Roles do
     guild_id: guild_id,
     message: %{components: components}
   }, path = [step | rest]) do
-    {step, ""} = Integer.parse step
+    step = String.to_existing_atom(step)
     menu_id = "roles:setup:select:" <> Enum.join(path, ":")
     selected = components_selected(components)
     values = selected[menu_id] |> fix_values(step)
     name = case step do
-      0 -> hd(values)
-      _ ->Enum.join rest, ":"
+      :name -> hd(values)
+      _ -> Enum.join rest, ":"
     end
 
     save_progress(step, guild_id, name, values)
 
-    {text, components} = setup_group_components(guild_id, name, step+1)
+    {text, components} = setup_group_components(guild_id, name, next_step(step))
     DiscordHr.respond_to_component interaction, text, components
   end
 
   defp handle_component(:setup_prev, interaction = %{
     guild_id: guild_id
   }, [step | rest]) do
-    {step, ""} = Integer.parse step
+    step = String.to_existing_atom(step)
     name = Enum.join rest, ":"
-    {text, components} = setup_group_components(guild_id, name, step-1)
+    {text, components} = setup_group_components(guild_id, name, prev_step(step))
     DiscordHr.respond_to_component interaction, text, components
   end
 
@@ -336,22 +338,21 @@ defmodule DiscordHr.Roles do
     components_selected(rest, acc)
   end
 
-  defp fix_values(step, values) when is_binary(step), do: fix_values(String.to_integer(step), values)
-  defp fix_values(values, 1), do: Enum.map(values, &String.to_integer/1)
-  defp fix_values(["False"], 3), do: false
-  defp fix_values(["True"], 3), do: true
+  defp fix_values(step, values) when is_binary(step), do: fix_values(String.to_existing_atom(step), values)
+  defp fix_values(values, :roles), do: Enum.map(values, &String.to_integer/1)
+  defp fix_values(["False"], :enable), do: false
+  defp fix_values(["True"], :enable), do: true
   defp fix_values(values, _), do: values
 
-  defp save_progress(0, _, _, _), do: :noop
-  defp save_progress(1, guild_id, name, roles) do
+  defp save_progress(:name, _, _, _), do: :noop
+  defp save_progress(:roles, guild_id, name, roles) do
     Storage.put([guild_id, @key, name, :roles], roles)
   end
-  defp save_progress(2, guild_id, name, [max]) do
+  defp save_progress(:max, guild_id, name, [max]) do
     {max, ""} = Integer.parse max
     Storage.put([guild_id, @key, name, :max], max)
   end
-  defp save_progress(2, _, _, []), do: :noop
-  defp save_progress(3, guild_id, name, enabled) do
+  defp save_progress(:enable, guild_id, name, enabled) do
     prev = Storage.get([guild_id, @key, name, :enabled], nil)
     Storage.put([guild_id,  @key, name, :enabled], enabled)
     if prev != enabled do
@@ -359,17 +360,16 @@ defmodule DiscordHr.Roles do
     end
   end
 
-  defp setup_group_components(guild_id), do: setup_group_components(guild_id, nil, 0)
+  defp setup_group_components(guild_id), do: setup_group_components(guild_id, nil, Enum.at(@setup_steps, 0))
 
-  defp setup_group_components(guild_id, name), do: setup_group_components(guild_id, name, 1)
   defp setup_group_components(guild_id, name, step), do: setup_group_components(guild_id, name, step, nil)
 
-  defp setup_group_components(guild_id, _, step = 0, selected) do
+  defp setup_group_components(guild_id, name, step = :name, selected) do
     case Storage.get([guild_id, @key]) |> Map.keys do
-      [name] -> setup_group_components(guild_id, name, 1)
+      [name] -> setup_group_components(guild_id, name, next_step(step))
       names ->
         text = "Choose roles group to setup"
-        options = names |> Enum.map(& %Component.Option{label: &1, value: &1, default: [&1] == selected})
+        options = names |> Enum.map(& %Component.Option{label: &1, value: &1, default: [&1] == (selected || [name])})
         menu = Component.SelectMenu.select_menu("roles:setup:select:#{step}:", placeholder: "Choose group", options: options, min_values: 1, max_values: 1)
         menu_row = Component.ActionRow.action_row components: [menu]
         buttons = Component.ActionRow.action_row components: [
@@ -380,7 +380,7 @@ defmodule DiscordHr.Roles do
     end
   end
 
-  defp setup_group_components(guild_id, name, step = 1, selected) do
+  defp setup_group_components(guild_id, name, step = :roles, selected) do
     text = "Roles group `#{name}`\nChoose roles"
 
     roles = Storage.get([guild_id, @key, name, :roles], [])
@@ -399,7 +399,7 @@ defmodule DiscordHr.Roles do
     {text, [menu_row, buttons]}
   end
 
-  defp setup_group_components(guild_id, name, step = 2, selected) do
+  defp setup_group_components(guild_id, name, step = :max, selected) do
     all_roles = Cache.GuildCache.get!(guild_id).roles
     %{roles: roles, max: max} = Storage.get([guild_id, @key, name])
     roles_text = roles
@@ -408,9 +408,14 @@ defmodule DiscordHr.Roles do
 
     text = "Roles group `#{name}`\n#{roles_text}\nChoose max selectable roles"
 
+    value = case selected do
+      [val] -> val |> String.to_integer
+      nil -> max
+    end
+    options = 1 .. max(1, length(roles)) |> Enum.map(& %Component.Option{label: "#{&1}", value: &1, default: value == &1})
     menu = Component.SelectMenu.select_menu("roles:setup:select:#{step}:#{name}",
       placeholder: "#{max}",
-      options: 1 .. max(1, length(roles)) |> Enum.map(& %Component.Option{label: "#{&1}", value: &1, default: ("#{selected}" || "#{max}") == "#{&1}"})
+      options: options
     )
     menu_row = Component.ActionRow.action_row components: [menu]
     buttons = Component.ActionRow.action_row components: [
@@ -421,7 +426,7 @@ defmodule DiscordHr.Roles do
     {text, [menu_row, buttons]}
   end
 
-  defp setup_group_components(guild_id, name, step = 3, selected) do
+  defp setup_group_components(guild_id, name, step = :enable, selected) do
     all_roles = Cache.GuildCache.get!(guild_id).roles
     %{roles: roles, max: max, enabled: enabled} = Storage.get([guild_id, @key, name])
     roles_text = roles
@@ -450,7 +455,7 @@ defmodule DiscordHr.Roles do
     {text, [menu_row, buttons]}
   end
 
-  defp setup_group_components(guild_id, name, step = 4, _) do
+  defp setup_group_components(guild_id, name, step = :done, _) do
     all_roles = Cache.GuildCache.get!(guild_id).roles
     %{roles: roles, max: max, enabled: enabled} = Storage.get([guild_id, @key, name])
     roles_text = roles
@@ -508,5 +513,8 @@ defmodule DiscordHr.Roles do
         :ok
     end
   end
+
+  defp next_step(step), do: @setup_steps |> Enum.at(Enum.with_index(@setup_steps)[step] + 1)
+  defp prev_step(step), do: @setup_steps |> Enum.at(Enum.with_index(@setup_steps)[step] - 1)
 
 end
