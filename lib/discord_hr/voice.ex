@@ -4,6 +4,7 @@ defmodule DiscordHr.Voice do
 
   use Bitwise, only_operators: true
   @new_voice_permissions 1 <<< 4 ||| 1 <<< 10 ||| 1 <<< 20
+  def new_voice_permissions, do: @new_voice_permissions
 
   alias Nostrum.Api
   alias Nostrum.Struct.Component

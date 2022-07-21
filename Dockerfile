@@ -21,7 +21,7 @@ WORKDIR /app
 COPY --from=builder /app/release/docker-*.tar.gz /app/
 RUN tar xzf docker-*.tar.gz
 
-VOLUME ["/app/config.toml", "/app/icons",  "/app/storage.bin", "/app/erl_crash.dump"]
+VOLUME ["/app/config.toml", "/app/icons",  "/app/storage.bin"]
 
 ENTRYPOINT ["/app/bin/docker"]
 CMD ["start"]
