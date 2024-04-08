@@ -34,10 +34,6 @@ defmodule DiscordHr.Ping do
   end
 
   @impl true
-  def interaction_react(interaction = %{
-    guild_id: guild_id, channel_id: channel_id, locale: locale,
-    member: %{user: %{id: user_id, username: username}, roles: user_roles}
-  }, ["on"]) do
     with %{roles: roles, channels: %{^channel_id => %{name: channel_name}}} <- Cache.GuildCache.get!(guild_id) do
       {text_norole, text_alreadyhave, text_ok} = case locale do
         "ru" <> _ ->
@@ -49,6 +45,15 @@ defmodule DiscordHr.Ping do
             "You already have role `@#{channel_name}`",
             "Added `@#{channel_name}` role" }
       end
+  def interaction_react(
+        interaction = %{
+          guild_id: guild_id,
+          channel_id: channel_id,
+          locale: locale,
+          member: %{user_id: user_id, nick: username, roles: user_roles}
+        },
+        ["on"]
+      ) do
 
       case roles |> Enum.find(fn ({_, r}) -> r.name == channel_name and r.mentionable end) do
         nil ->
