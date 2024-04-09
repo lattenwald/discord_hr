@@ -8,7 +8,8 @@ defmodule DiscordHr.Storage do
   end
 
   defp load(storage) do
-    Logger.info "loading data from #{storage}"
+    Logger.info("loading data from #{storage}")
+
     with {:ok, contents} <- File.read(storage),
          data <- :erlang.binary_to_term(contents) do
       {:ok, data}
@@ -21,7 +22,7 @@ defmodule DiscordHr.Storage do
 
   defp save() do
     %{data: data, storage: storage} = Agent.get(__MODULE__, & &1)
-    File.write! storage, :erlang.term_to_binary(data)
+    File.write!(storage, :erlang.term_to_binary(data))
   end
 
   def put(keys, value) when is_list(keys) do
@@ -47,17 +48,18 @@ defmodule DiscordHr.Storage do
   end
 
   def delete_in_map(map, [key]) do
-    Map.delete map, key
+    Map.delete(map, key)
   end
+
   def delete_in_map(map, [key | rest]) do
     internal = Map.get(map, key, %{})
     Map.put(map, key, delete_in_map(internal, rest))
   end
 
   def put_in_map(map, [key], val), do: Map.put(map, key, val)
+
   def put_in_map(map, [key | rest], val) do
     internal = Map.get(map, key, %{})
     Map.put(map, key, put_in_map(internal, rest, val))
   end
-
 end
